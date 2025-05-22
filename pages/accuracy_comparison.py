@@ -13,8 +13,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support
 
 # Load dataset
-DATASET_PATH1 = pd.read_csv("Blood_samples_dataset_balanced_2.csv")
-DATASET_PATH2 = pd.read_csv("blood_samples_dataset_test.csv")
+DATASET_PATH1 = pd.read_csv("Data/Blood_samples_dataset_balanced_2.csv")
+DATASET_PATH2 = pd.read_csv("Data/blood_samples_dataset_test.csv")
 
 df = pd.concat([DATASET_PATH1, DATASET_PATH2], ignore_index=True)
 df = df.replace('Thalasse', 'Thalassemia').replace('Heart Di', 'Heart Disease')

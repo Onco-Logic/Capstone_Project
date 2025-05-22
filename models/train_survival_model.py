@@ -12,7 +12,7 @@ import lightgbm as lgb
 import catboost as cb
 
 # Load and Clean Data
-df = pd.read_csv("survival_data.csv")
+df = pd.read_csv("Data/survival_data.csv")
 
 # Standardize column names
 df.rename(columns=lambda x: x.strip().replace(" ", "_"), inplace=True)

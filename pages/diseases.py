@@ -13,8 +13,8 @@ import streamlit as st
 import plotly.express as px
 
 # Load the data
-df1 = pd.read_csv('/content/Blood_samples_dataset_balanced_2.csv')
-df2 = pd.read_csv('/content/blood_samples_dataset_test.csv')
+df1 = pd.read_csv('Data/Blood_samples_dataset_balanced_2.csv')
+df2 = pd.read_csv('Data/blood_samples_dataset_test.csv')
 df = pd.concat([df1, df2], ignore_index=True)
 
 df = df.replace('Thalasse', 'Thalassemia').replace('Heart Di', 'Heart Disease')

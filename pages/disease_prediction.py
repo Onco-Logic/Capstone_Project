@@ -14,7 +14,7 @@ dt_model = joblib.load("models/models/decision_tree_model.pkl")
 scaler = joblib.load("models/models/scaler.pkl")
 
 # Load Blood Sample Dataset
-df_blood = pd.read_csv("Blood_samples_dataset_balanced_2.csv")
+df_blood = pd.read_csv("Data/Blood_samples_dataset_balanced_2.csv")
 
 conversion_units = {
     "Glucose": [(70, 140),   "mg/dL"],
