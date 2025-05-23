@@ -7,7 +7,7 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.decomposition import PCA
 
 # Load the dataset
-file_path = 'Data/Breast_Cancer.csv'
+file_path = '../Data/Breast_Cancer.csv'
 data = pd.read_csv(file_path)
 
 # Displaying the descriptive statistics for the 'Survival Months' column to understand its distribution
