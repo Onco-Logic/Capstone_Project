@@ -7,7 +7,7 @@ from sklearn.metrics import classification_report, confusion_matrix, accuracy_sc
 from sklearn.preprocessing import LabelEncoder
 
 # Load BreastCancer dataset
-df = pd.read_csv('../../Data/Breast_Cancer2.csv')
+df = pd.read_csv('../../Data/Breast_Cancer_Dead_Extended.csv')
 
 # Encode vars
 X = df.drop('Status', axis = 1)
