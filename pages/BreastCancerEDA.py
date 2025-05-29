@@ -5,6 +5,12 @@ import streamlit as st
 import seaborn as sns
 from sklearn.preprocessing import LabelEncoder
 from sklearn.decomposition import PCA
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 
 st.set_page_config(
     page_title="Breast Cancer Prognosis",
@@ -15,6 +21,7 @@ st.set_page_config(
 )
 
 st.title("Breast Cancer Prognosis")
+st.markdown("---")
 
 # Load the dataset
 file_path = 'Data/Breast_Cancer.csv'
@@ -25,10 +32,12 @@ data = pd.read_csv(file_path)
 # Display the first few rows of the dataset
 st.subheader("Preview of Dataset")
 st.dataframe(data.head())
+st.markdown("---")
 
 # Display the shape of the dataset
 st.subheader("Shape of Dataset")
 st.write(f"Rows: {data.shape[0]}, Columns: {data.shape[1]}")
+st.markdown("---")
 
 # Display information about the dataset
 summary_df = pd.DataFrame({
@@ -39,10 +48,12 @@ summary_df = pd.DataFrame({
 
 st.subheader("Summary of Dataset")
 st.dataframe(summary_df, use_container_width=True)
+st.markdown("---")
 
 # Display dataframe stats
 st.subheader("Dataset Statistical Information")
 st.dataframe(data.describe(), use_container_width=True)
+st.markdown("---")
 
 # Plotting the distribution each column
 st.subheader("Data Distribution by Column")
@@ -54,6 +65,7 @@ def plot_distribution(data, column):
 
 selected_column = st.selectbox("Select a column to plot", data.columns)
 plot_distribution(data, selected_column)
+st.markdown("---")
 
 # Plotting the survival months by each column
 st.subheader("Survival Months by Column")
@@ -66,6 +78,7 @@ def plot_survival_by_category(data, category):
 categories = data.columns.drop('Survival Months')
 selected_category = st.selectbox("Select a column to plot:", categories)
 plot_survival_by_category(data, selected_category)
+st.markdown("---")
 
 # Plotting Status by each column
 st.subheader("Status by Column")
@@ -78,6 +91,7 @@ def plot_status_by_category(data, category):
 categories = data.columns.drop('Status')
 selected_category = st.selectbox("Select a column to plot:", categories)
 plot_status_by_category(data, selected_category)
+st.markdown("---")
 
 # Plotting the survival months distribution
 st.subheader("Survival Months Distribution")
@@ -87,6 +101,7 @@ ax.set_title("Distribution of Survival Months")
 ax.set_xticks(range(0, int(data['Survival Months'].max()) + 1, 12))
 ax.set_xticklabels([str(i) for i in range(0, int(data['Survival Months'].max()) + 1, 12)])
 st.pyplot(fig)
+st.markdown("---")
 
 # Plotting Status distribution
 st.subheader("Status Distribution")
@@ -94,10 +109,13 @@ fig, ax = plt.subplots()
 sns.countplot(data=data, x='Status', palette=sns.color_palette("muted", 2), ax=ax)
 ax.set_title("Distribution of Status")
 st.pyplot(fig)
+st.markdown("---")
 
 ############################################# Data Preprocessing #############################################
 
 st.title("Data Preprocessing")
+st.markdown("---")
+
 # Label encode classification columns
 le = LabelEncoder()
 pdata = data.copy()
@@ -107,10 +125,15 @@ for i in pdata.columns:
 
 st.subheader("Encoded Dataset")
 st.dataframe(pdata.head())
+st.markdown("---")
+
+# Copy of encoded dataset to use for survival prediction
+pdataS = pdata.copy()
 
 # Display the shape of the dataset
 st.subheader("Shape of Dataset")
 st.write(f"Rows: {pdata.shape[0]}, Columns: {pdata.shape[1]}")
+st.markdown("---")
 
 # Display information about the dataset
 summary_df = pd.DataFrame({
@@ -121,6 +144,7 @@ summary_df = pd.DataFrame({
 
 st.subheader("Summary of Dataset")
 st.dataframe(summary_df, use_container_width=True)
+st.markdown("---")
 
 # Correlation Heatmap on Encoded Data
 correlation_matrix = pdata.corr()
@@ -129,6 +153,29 @@ fig, ax = plt.subplots(figsize=(12, 10))
 sns.heatmap(correlation_matrix, cmap='coolwarm', annot=False, ax=ax)
 ax.set_title('Correlation Heatmap')
 st.pyplot(fig)
+st.markdown("---")
+
+################################### PCA #######################################
+
+# Apply PCA to data
+scaler = StandardScaler()
+scaled_data = scaler.fit_transform(pdata)
+# Apply PCA to scaled data
+pca_model = PCA()
+pca_data = pca_model.fit_transform(scaled_data)
+
+# Plot explained variance
+explained_variance = pca_model.explained_variance_ratio_
+cumulative_explained_variance = np.cumsum(explained_variance)
+fig, ax = plt.subplots()
+ax.plot(cumulative_explained_variance)
+ax.set_title("Explained Variance by PCA Components")
+ax.set_xlabel("Number of Components")
+ax.set_ylabel("Cumulative Explained Variance")
+st.pyplot(fig)
+st.markdown("---")
+
+###################################################################################
 
 # Splitting data into X and Y target status
 X = pdata.drop("Status", axis=1)
@@ -137,84 +184,92 @@ Y = pdata["Status"]
 # Splitting data into X and Y
 st.subheader("Splitting data into X")
 X
+st.markdown("---")
 st.subheader("Splitting data into Y")
 Y
+st.markdown("---")
 
-# Convert 'Survival Months' to 'Year'
-#pdataSM['Year'] = pdata['Survival Months'] // 12
+################################################## Model Building Status #############################################
 
+st.title("Status Model")
+st.markdown("---")
+# Splitting data into training and testing sets
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.1, random_state=42)
 
+# Initialize the Random Forest Classifier
+st.subheader("Random Forest Classifier")
+modelRFC = RandomForestClassifier(random_state=42)
 
+modelRFC.fit(X_train, Y_train)
 
+st.subheader("Model Evaluation")
+st.write(f"Model: {modelRFC}")
 
+Y_pred = modelRFC.predict(X_test)
+accuracy = accuracy_score(Y_test, Y_pred)
+st.write(f"Model Accuracy: {accuracy:.3f}")
 
+# Initialize the XGBoost Classifier
+st.subheader("XGBoost Classifier")
 
+modelXGB = XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='logloss')
 
+# Train the XGBoost model on the training data
+modelXGB.fit(X_train, Y_train)
 
+st.write(f"Trained Model: {modelXGB}")
 
-'''
-# Displaying the descriptive statistics for the 'Survival Months' column
-print(data['Survival Months'].describe())
+# Make predictions on the test data
+Y_pred_xgb = modelXGB.predict(X_test)
 
-# Filtering the data to include only rows where 'Survival Months' is less than or equal to 100
-data = data[data['Survival Months'] <= 100]
+# Calculate the accuracy
+accuracy_xgb = accuracy_score(Y_test, Y_pred_xgb)
+st.write(f"XGBoost Accuracy on Test Set: {accuracy_xgb:.3f}")
+st.markdown("---")
 
-# Displaying the descriptive statistics for the filtered 'Survival Months' column to verify the changes
-print(data['Survival Months'].describe())
+################################################## Model Building Survival #############################################
 
-# Data Preparation
-# Removing the target columns as instructed
-# data.drop(columns=['Status', 'Survival Months'], inplace=True)
+st.title("Survival Model")
+st.markdown("---")
 
-# Data Cleaning
-# Checking for missing values
-missing_values = data.isnull().sum()
+# Create the new target column on pdataS
+pdataS['Survival Years'] = pdataS['Survival Months'] // 12
 
-# Categorical Data Analysis
-# Identifying categorical columns
-categorical_columns = data.select_dtypes(include=['object']).columns
+# Define features (X1) and target (Y1) for pdataS
+# Drop both the original months and the years
+X1 = pdataS.drop(['Survival Months', 'Survival Years'], axis=1)
+Y1 = pdataS['Survival Years']
 
-# One-Hot Encoding
-data_encoded = pd.get_dummies(data, columns=categorical_columns, drop_first=True)
-print(data_encoded)
+# Splitting data into training and testing sets
+X1_train, X1_test, Y1_train, Y1_test = train_test_split(X1, Y1, test_size=0.1, random_state=42)
 
-# Step 4: Numerical Data Analysis
-numerical_columns = data.select_dtypes(include=['int64', 'float64']).columns
+# Initialize the Random Forest Classifier
+st.subheader("Random Forest Classifier")
+modelRFC = RandomForestClassifier(random_state=42)
 
-# Distribution analysis
-for column in numerical_columns:
-    plt.figure()
-    sns.histplot(data[column], kde=True)
-    plt.title(f'Distribution of {column}')
-    plt.show()
+modelRFC.fit(X1_train, Y1_train)
 
-# Step 5: Correlation Analysis
-correlation_matrix = data_encoded.corr()
-plt.figure(figsize=(12, 10))
-sns.heatmap(correlation_matrix, cmap='coolwarm', annot=False)
-plt.title('Correlation Heatmap')
-plt.show()
+st.subheader("Model Evaluation")
+st.write(f"Model: {modelRFC}")
 
-# Step 6: PCA Preparation
-scaler = StandardScaler()
-data_scaled = scaler.fit_transform(data_encoded)
+Y1_pred = modelRFC.predict(X1_test)
+accuracy = accuracy_score(Y1_test, Y1_pred)
+st.write(f"Model Accuracy: {accuracy:.3f}")
 
-# Applying PCA
-pca = PCA()
-principal_components = pca.fit_transform(data_scaled)
-explained_variance = pca.explained_variance_ratio_
+# Initialize the XGBoost Classifier
+st.subheader("XGBoost Classifier")
 
-# Visualizing PCA Explained Variance
-plt.figure()
-plt.plot(np.cumsum(explained_variance))
-plt.title('Explained Variance by PCA Components')
-plt.xlabel('Number of Components')
-plt.ylabel('Cumulative Explained Variance')
-plt.show()
+modelXGB = XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='logloss')
 
-# Displaying Results
-print("\nMissing Values:")
-print(missing_values)
-print("\nPCA Explained Variance:")
-print(explained_variance)
-'''
+# Train the XGBoost model on the training data
+modelXGB.fit(X1_train, Y1_train)
+
+st.write(f"Trained Model: {modelXGB}")
+
+# Make predictions on the test data
+Y1_pred_xgb = modelXGB.predict(X1_test)
+
+# Calculate the accuracy
+accuracy_xgb = accuracy_score(Y_test, Y1_pred_xgb)
+st.write(f"XGBoost Accuracy on Test Set: {accuracy_xgb:.3f}")
+st.markdown("---")
