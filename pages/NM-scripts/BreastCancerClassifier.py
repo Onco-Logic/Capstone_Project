@@ -1,5 +1,3 @@
-# Note: Make sure to run dead_extender before running this~
-
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
@@ -8,26 +6,40 @@ from sklearn.preprocessing import LabelEncoder
 
 # TODO: Tune model (preferably an auto solution). 
 
-# Load BreastCancer dataset
-df = pd.read_csv('../../Data/Breast_Cancer_Dead_Extended.csv')
+# File paths
+train_data_path = '../../Data/NM-datasets/Breast_Cancer_train_balanced.csv'
+val_data_path = '../../Data/NM-datasets/Breast_Cancer_val.csv'
 
-# Encode vars
-X = df.drop('Status', axis = 1)
-X = pd.get_dummies(X, drop_first = True)
+# Load datasets
+print(f"\nLoading training data from: {train_data_path}")
+train_df = pd.read_csv(train_data_path)
 
+print(f"Loading validation data from: {val_data_path}")
+val_df = pd.read_csv(val_data_path)
+
+# Prepare Training Data
+X_train_raw = train_df.drop('Status', axis=1)
+X_train = pd.get_dummies(X_train_raw, drop_first=True)
 le = LabelEncoder()
-Y = le.fit_transform(df['Status']) # 0 is alive, 1 is dead
+Y_train = le.fit_transform(train_df['Status']) # 0 = Alive, 1 = Dead
 
-X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size = 0.2, random_state = 1, stratify = Y)
+# Prepare Validation Data
+X_val_raw = val_df.drop('Status', axis=1)
+X_val = pd.get_dummies(X_val_raw, drop_first=True)
+Y_val = le.transform(val_df['Status'])
 
-# Random Forest
-clf = RandomForestClassifier(random_state = 42)
-clf.fit(X_train, Y_train) 
+# Random Forest Classifier
+clf = RandomForestClassifier(random_state=42) # Using a fixed random_state for reproducibility
+print("\nTraining RandomForestClassifier...")
+clf.fit(X_train, Y_train)
 
-Y_predict = clf.predict(X_test)
+print("Testing on validation set...")
+Y_predict = clf.predict(X_val)
 
-# Print matrix report
-cm = confusion_matrix(Y_test, Y_predict)
+# Validation Set Evaluation
+print("\nValidation Set Evaluation:")
+cm = confusion_matrix(Y_val, Y_predict)
+
 true_alive = cm[0, 0]
 false_alive = cm[0, 1]
 false_dead = cm[1, 0]
@@ -40,7 +52,7 @@ print(f"False Dead: {false_dead}")
 print(f"True Dead: {true_dead}")
 print(f"-------------")
 
-accuracy_percent = 100 * accuracy_score(Y_test, Y_predict)
+accuracy_percent = 100 * accuracy_score(Y_val, Y_predict)
 alive_accuracy = 100 * (true_alive / (true_alive + false_alive))
 dead_accuracy = 100 * (true_dead / (true_dead + false_dead))
 
