@@ -3,7 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
 import seaborn as sns
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.decomposition import PCA
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -107,12 +111,35 @@ for column in numerical_columns:
     plt.show()
 
 # Step 5: Correlation Analysis
-correlation_matrix = data_encoded.corr()
-plt.figure(figsize=(12, 10))
-sns.heatmap(correlation_matrix, cmap='coolwarm', annot=False)
+correlation_matrix = data_encoded.corr().round(2)
+plt.figure(figsize=(20, 12))
+sns.heatmap(correlation_matrix, cmap='copper_r', annot=True)
 plt.title('Correlation Heatmap')
 plt.show()
 
+# ------------------------------------------------------------------------------------------------------------------
+# Flatten into pairwise table
+corr_pairs = (
+    correlation_matrix
+    .abs()
+    .unstack()
+    .reset_index()
+    .rename(columns={'level_0':'Variable 1', 'level_1':'Variable 2', 0:'Correlation'})
+)
+# Remove self-correlations
+corr_pairs = corr_pairs[corr_pairs['Variable 1'] != corr_pairs['Variable 2']]
+
+# Dedupe pairs (so you don’t see both (A,B) and (B,A))
+corr_pairs['Pair'] = corr_pairs.apply(lambda r: tuple(sorted([r['Variable 1'], r['Variable 2']])), axis=1)
+corr_pairs = corr_pairs.drop_duplicates(subset='Pair').drop(columns='Pair')
+
+# Sort and grab top 10
+top10 = corr_pairs.sort_values('Correlation', ascending=False).head(10).reset_index(drop=True)
+
+print("Top 10 highest-correlated variable pairs:")
+print(top10)
+
+# ------------------------------------------------------------------------------------------------------------------
 # Step 6: PCA Preparation
 scaler = StandardScaler()
 data_scaled = scaler.fit_transform(data_encoded)
@@ -136,3 +163,53 @@ print("\nMissing Values:")
 print(missing_values)
 print("\nPCA Explained Variance:")
 print(explained_variance)
+
+# Separate features and target
+X = df_clean.drop("Status", axis=1)
+y = df_clean["Status"]
+
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Feature scaling
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Train model
+# model = LogisticRegression(max_iter=1000)
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train_scaled, y_train)
+
+# Predict
+y_pred = model.predict(X_test_scaled)
+
+# Evaluate
+print("\nAccuracy:", accuracy_score(y_test, y_pred))
+print("\nClassification Report:\n", classification_report(y_test, y_pred))
+
+# Confusion matrix
+cm = confusion_matrix(y_test, y_pred)
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=label_encoders['Status'].classes_, yticklabels=label_encoders['Status'].classes_)
+plt.title("Confusion Matrix")
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+plt.show()
+
+# Overall accuracy
+accuracy_percent = accuracy_score(y_test, y_pred) * 100
+
+# Alive and Dead class-specific accuracy
+alive_label = label_encoders['Status'].transform(['Alive'])[0]
+dead_label = label_encoders['Status'].transform(['Dead'])[0]
+
+alive_indices = (y_test == alive_label)
+dead_indices = (y_test == dead_label)
+
+alive_accuracy = accuracy_score(y_test[alive_indices], y_pred[alive_indices]) * 100
+dead_accuracy = accuracy_score(y_test[dead_indices], y_pred[dead_indices]) * 100
+
+# Print results
+print(f"Overall Accuracy: {accuracy_percent:.2f}%")
+print(f"Alive Accuracy:   {alive_accuracy:.2f}%")
+print(f"Dead Accuracy:    {dead_accuracy:.2f}%")
