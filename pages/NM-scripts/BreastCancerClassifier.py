@@ -1,5 +1,4 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, accuracy_score
 from sklearn.preprocessing import LabelEncoder
@@ -29,7 +28,7 @@ X_val = pd.get_dummies(X_val_raw, drop_first=True)
 Y_val = le.transform(val_df['Status'])
 
 # Random Forest Classifier
-clf = RandomForestClassifier(random_state=42)
+clf = RandomForestClassifier(random_state=100)
 print("\nTraining RandomForestClassifier...")
 clf.fit(X_train, Y_train)
 
