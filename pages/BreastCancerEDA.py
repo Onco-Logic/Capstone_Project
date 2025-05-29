@@ -12,7 +12,7 @@ from sklearn.decomposition import PCA
 from mpl_toolkits.mplot3d import Axes3D
 
 # Load the dataset
-file_path = 'Data/Breast_Cancer.csv'
+file_path = 'Data/Breast_Cancer_Balanced.csv'
 df = pd.read_csv(file_path)
 
 # Displaying the descriptive statistics for the 'Survival Months' column to understand its distribution
@@ -117,29 +117,6 @@ sns.heatmap(correlation_matrix, cmap='copper_r', annot=True)
 plt.title('Correlation Heatmap')
 plt.show()
 
-# ------------------------------------------------------------------------------------------------------------------
-# Flatten into pairwise table
-corr_pairs = (
-    correlation_matrix
-    .abs()
-    .unstack()
-    .reset_index()
-    .rename(columns={'level_0':'Variable 1', 'level_1':'Variable 2', 0:'Correlation'})
-)
-# Remove self-correlations
-corr_pairs = corr_pairs[corr_pairs['Variable 1'] != corr_pairs['Variable 2']]
-
-# Dedupe pairs (so you don’t see both (A,B) and (B,A))
-corr_pairs['Pair'] = corr_pairs.apply(lambda r: tuple(sorted([r['Variable 1'], r['Variable 2']])), axis=1)
-corr_pairs = corr_pairs.drop_duplicates(subset='Pair').drop(columns='Pair')
-
-# Sort and grab top 10
-top10 = corr_pairs.sort_values('Correlation', ascending=False).head(10).reset_index(drop=True)
-
-print("Top 10 highest-correlated variable pairs:")
-print(top10)
-
-# ------------------------------------------------------------------------------------------------------------------
 # Step 6: PCA Preparation
 scaler = StandardScaler()
 data_scaled = scaler.fit_transform(data_encoded)
