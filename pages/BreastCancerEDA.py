@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
 import seaborn as sns
+from imblearn.over_sampling import RandomOverSampler
 from sklearn.preprocessing import LabelEncoder
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
@@ -189,12 +190,16 @@ st.subheader("Splitting data into Y")
 Y
 st.markdown("---")
 
+RandomSample = RandomOverSampler(random_state=42)
+X, Y = RandomSample.fit_resample(X,Y)
+
 ################################################## Model Building Status #############################################
 
 st.title("Status Model")
 st.markdown("---")
+
 # Splitting data into training and testing sets
-X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.1, random_state=42)
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
 # Initialize the Random Forest Classifier
 st.subheader("Random Forest Classifier")
@@ -231,6 +236,16 @@ st.markdown("---")
 
 st.title("Survival Model")
 st.markdown("---")
+# Notes from Ali for how to handle survival prediction, use at least 3 models for prediction, include
+# f1 scores and seperate binary predictions for status.
+# 
+# less than 1 year consider 0
+# 1-2 consider as 2
+# 3-4 consider as 4
+# 5-6 consider as 6
+# 7-8 consider as 8
+# 9-10 consider as 10
+# 6 class classification
 
 # Create the new target column on pdataS
 pdataS['Survival Years'] = pdataS['Survival Months'] // 12
@@ -238,14 +253,16 @@ pdataS['Survival Years'] = pdataS['Survival Months'] // 12
 # Define features (X1) and target (Y1) for pdataS
 # Drop both the original months and the years
 X1 = pdataS.drop(['Survival Months', 'Survival Years'], axis=1)
+#X1 = pdataS.drop(['Survival Months'], axis=1)
 Y1 = pdataS['Survival Years']
+#Y1 = pdataS['Survival Months'] -1
 
 # Splitting data into training and testing sets
-X1_train, X1_test, Y1_train, Y1_test = train_test_split(X1, Y1, test_size=0.1, random_state=42)
+X1_train, X1_test, Y1_train, Y1_test = train_test_split(X1, Y1, test_size=0.2, random_state=42)
 
 # Initialize the Random Forest Classifier
 st.subheader("Random Forest Classifier")
-modelRFC = RandomForestClassifier(random_state=42)
+modelRFC = RandomForestClassifier(n_estimators=600, random_state=42)
 
 modelRFC.fit(X1_train, Y1_train)
 
