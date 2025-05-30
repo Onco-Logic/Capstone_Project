@@ -233,7 +233,7 @@ st.write(f"XGBoost Accuracy on Test Set: {accuracy_xgb:.3f}")
 st.markdown("---")
 
 ################################################## Model Building Survival #############################################
-
+'''
 st.title("Survival Model")
 st.markdown("---")
 # Notes from Ali for how to handle survival prediction, use at least 3 models for prediction, include
@@ -290,3 +290,4 @@ Y1_pred_xgb = modelXGB.predict(X1_test)
 accuracy_xgb = accuracy_score(Y_test, Y1_pred_xgb)
 st.write(f"XGBoost Accuracy on Test Set: {accuracy_xgb:.3f}")
 st.markdown("---")
+'''
