@@ -2,30 +2,38 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, accuracy_score
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
 
-# TODO: Tune model maybe (preferably an auto solution). Also maybe try different models besides Random Forest (a menu).
+# File path
+data_path = '../../Data/NM-datasets/Breast_Cancer.csv'
 
-# File paths
-train_data_path = '../../Data/NM-datasets/Breast_Cancer_train_balanced.csv'
-val_data_path = '../../Data/NM-datasets/Breast_Cancer_val.csv'
+# Load the dataset
+print(f"Loading data from: {data_path}")
+df = pd.read_csv(data_path)
 
-# Load datasets
-print(f"\nLoading training data from: {train_data_path}")
-train_df = pd.read_csv(train_data_path)
+# Prepare Data
+# Separate features (X) and target (Y)
+X_raw = df.drop('Status', axis=1)
+Y_raw = df['Status']
 
-print(f"Loading validation data from: {val_data_path}")
-val_df = pd.read_csv(val_data_path)
-
-# Prepare Training Data
-X_train_raw = train_df.drop('Status', axis=1)
-X_train = pd.get_dummies(X_train_raw, drop_first=True)
+# Encode categorical features and the target variable
+X = pd.get_dummies(X_raw, drop_first=True)
 le = LabelEncoder()
-Y_train = le.fit_transform(train_df['Status']) # 0 = Alive, 1 = Dead
+Y = le.fit_transform(Y_raw) # 0 = Alive, 1 = Dead
 
-# Prepare Validation Data
-X_val_raw = val_df.drop('Status', axis=1)
-X_val = pd.get_dummies(X_val_raw, drop_first=True)
-Y_val = le.transform(val_df['Status'])
+# Split data into 80% training and 20% validation
+# stratify=Y ensures the split maintains the proportion of 'Alive' and 'Dead' records
+X_train, X_val, Y_train, Y_val = train_test_split(
+    X, Y, test_size=0.20, random_state=100, stratify=Y
+)
+
+val_alive_count = (Y_val == 0).sum()  # Assuming 0 = Alive based on LabelEncoder
+val_dead_count = (Y_val == 1).sum()   # Assuming 1 = Dead based on LabelEncoder
+
+print(f"\nData split into {len(X_train)} training samples and {len(X_val)} validation samples.")
+print(f"Total Alive records: {val_alive_count} ({100 * val_alive_count / len(Y_val):.1f}%)")
+print(f"Total Dead records: {val_dead_count} ({100 * val_dead_count / len(Y_val):.1f}%)")
+print(f"Total validation records: {len(Y_val)}")
 
 # Random Forest Classifier
 clf = RandomForestClassifier(random_state=100)
@@ -52,8 +60,10 @@ print(f"True Dead: {true_dead}")
 print(f"-------------")
 
 accuracy_percent = 100 * accuracy_score(Y_val, Y_predict)
-alive_accuracy = 100 * (true_alive / (true_alive + false_alive))
-dead_accuracy = 100 * (true_dead / (true_dead + false_dead))
+# Handle division by zero case if a class has no samples in the validation set
+alive_accuracy = 100 * (true_alive / (true_alive + false_alive)) if (true_alive + false_alive) > 0 else 0
+dead_accuracy = 100 * (true_dead / (true_dead + false_dead)) if (true_dead + false_dead) > 0 else 0
+
 
 print(f"\nOverall Accuracy: {accuracy_percent:.2f}%")
 print(f"Alive Accuracy: {alive_accuracy:.2f}%")
