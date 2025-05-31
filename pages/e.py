@@ -4,9 +4,12 @@ import matplotlib.pyplot as plt
 from sklearn.svm import SVC
 import streamlit as st
 import seaborn as sns
-from imblearn.over_sampling import RandomOverSampler, SMOTE
+from imblearn.combine import SMOTEENN, SMOTETomek
+from collections import Counter
+from imblearn.over_sampling import RandomOverSampler, SMOTE, KMeansSMOTE
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.decomposition import PCA
+from imblearn.under_sampling import EditedNearestNeighbours
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from xgboost import XGBClassifier, XGBRegressor
@@ -58,51 +61,6 @@ st.dataframe(pdata.head())
 # Copy of encoded dataset to use for survival prediction
 pdataS = pdata.copy()
 
-# Display the shape of the dataset
-st.subheader("Shape of Dataset")
-st.write(f"Rows: {pdata.shape[0]}, Columns: {pdata.shape[1]}")
-
-# Display information about the dataset
-summary_df = pd.DataFrame({
-    "Null Count": pdata.isna().sum(),
-    "Unique": pdata.nunique(),
-    "Dtype": pdata.dtypes.astype(str)
-})
-
-st.subheader("Summary of Dataset")
-st.dataframe(summary_df, use_container_width=True)
-
-# Correlation Heatmap on Encoded Data
-correlation_matrix = pdata.corr()
-st.subheader("Correlation Heatmap")
-fig, ax = plt.subplots(figsize=(12, 10))
-sns.heatmap(correlation_matrix, cmap='coolwarm', annot=False, ax=ax)
-ax.set_title('Correlation Heatmap')
-st.pyplot(fig)
-
-################################### PCA #######################################
-
-st.markdown("---")
-st.subheader("Principal Component Analysis")
-st.markdown("---")
-
-# Apply PCA to data
-scaler = StandardScaler()
-scaled_data = scaler.fit_transform(pdata)
-# Apply PCA to scaled data
-pca_model = PCA()
-pca_data = pca_model.fit_transform(scaled_data)
-
-# Plot explained variance
-explained_variance = pca_model.explained_variance_ratio_
-cumulative_explained_variance = np.cumsum(explained_variance)
-fig, ax = plt.subplots()
-ax.plot(cumulative_explained_variance)
-ax.set_title("Explained Variance by PCA Components")
-ax.set_xlabel("Number of Components")
-ax.set_ylabel("Cumulative Explained Variance")
-st.pyplot(fig)
-
 ################################################## Survival Model #############################################
 
 st.markdown("---")
@@ -115,14 +73,20 @@ def categorize_survival(months):
         return 0
     elif 12 <= months < 24:
         return 1
-    elif 24 <= months < 48:
+    elif 24 <= months < 36:
         return 2
-    elif 48 <= months < 72:
+    elif 36 <= months < 48:
         return 3
-    elif 72 <= months < 96:
+    elif 48 <= months < 60:
         return 4
-    else:
+    elif 60 <= months < 72:
         return 5
+    elif 72 <= months < 84:
+        return 6
+    elif 84 <= months < 96:
+        return 7
+    else:
+        return 8
 
 pdataS['Survival Class'] = pdataS['Survival Months'].apply(categorize_survival)
 
@@ -131,18 +95,90 @@ X1 = pdataS.drop(['Survival Months', 'Survival Class'], axis=1)
 y1 = pdataS['Survival Class']
 
 # Get unique class names for display purposes
-class_names = ['<1 Year', '1-2 Years', '3-4 Years', '5-6 Years', '7-8 Years', '9-10+ Years']
+class_names = ['<1 Year', '1-2 Years', '2-3 Years', '3-4 Years', '4-5 Years', '5-6 Years', '7-8 Years', '8-9 Years', '9+ Years']
 
 st.subheader("Splitting data into X1 and y1 (Survival Class)")
 st.dataframe(X1.head())
 st.dataframe(y1.head())
 
-# Apply Random Over-Sampling for class imbalance
-RandomSample_survival = RandomOverSampler(random_state=42)
+##################################################################################
+
+
+''' Testing different strategies for oversampling, uncomment to use each one individually '''
+
+"""SMOTETomek"""
+# original_counts = Counter(y1) 
+# desired_sampling_strategy_smotetomek = {
+#     0: 300, # Example: target for smallest minority
+#     1: 300,
+#     2: 300,
+#     3: 300
+# }
+# smote_tomek = SMOTETomek(random_state=42, sampling_strategy=desired_sampling_strategy_smotetomek)
+# X1_resampled, y1_resampled = smote_tomek.fit_resample(X1, y1)
+# st.write(f"Resampled dataset shape after SMOTETomek: {Counter(y1_resampled)}")
+
+'''SMOTEENN with modified parameters'''
+# st.write(f"Original dataset shape: {Counter(y1)}")
+# original_counts = Counter(y1) 
+# desired_sampling_strategy = {
+#     0: 300,
+#     1: 300,
+#     2: 300,
+#     3: 300
+# }
+# custom_enn = EditedNearestNeighbours(sampling_strategy='all', n_neighbors=3, kind_sel='mode')
+# smote_enn = SMOTEENN(
+#     random_state=42,
+#     sampling_strategy=desired_sampling_strategy,
+#     enn=custom_enn
+# )
+# X1_resampled, y1_resampled = smote_enn.fit_resample(X1, y1)
+# st.write(f"Resampled dataset shape after SMOTEENN: {Counter(y1_resampled)}")
+
+'''SMOTEENN with default parameters'''
+# st.write(f"Original dataset shape: {Counter(y1)}")
+# smote_enn = SMOTEENN(random_state=42)
+# X1_resampled, y1_resampled = smote_enn.fit_resample(X1, y1)
+# st.write(f"Resampled dataset shape after SMOTEENN: {Counter(y1_resampled)}")
+
+'''Random Over-Sampling'''
+# RandomSample_survival = RandomOverSampler(random_state=42)
+# X1_resampled, y1_resampled = RandomSample_survival.fit_resample(X1, y1)
+
+'''SMOTE'''
+# smote = SMOTE(random_state=42)
+# X1_resampled, y1_resampled = smote.fit_resample(X1, y1)
+
+'''KMeansSMOTE'''
+# st.write(f"Original dataset shape: {Counter(y1)}")
+# kmeans_smote = KMeansSMOTE(random_state=42, k_neighbors=2, cluster_balance_threshold=0.001, n_jobs=-1) 
+# X1_resampled, y1_resampled = kmeans_smote.fit_resample(X1, y1)
+# st.write(f"Resampled dataset shape after KMeansSMOTE: {Counter(y1_resampled)}")
+
+'''RandomOverSampler with modified parameters - This approach shows promise'''
+st.write(f"Original dataset shape: {Counter(y1)}")
+original_counts = Counter(y1) 
+desired_sampling_strategy = {
+    0: 800,
+    1: 800,
+    2: 800,
+    3: 800,
+    4: 1200,
+    5: 1300,
+    6: 1300,
+    7: 1300,
+    8: 1300
+}
+RandomSample_survival = RandomOverSampler(random_state=42, sampling_strategy=desired_sampling_strategy)
 X1_resampled, y1_resampled = RandomSample_survival.fit_resample(X1, y1)
+st.write(f"Resampled dataset shape after RandomOverSampler: {Counter(y1_resampled)}")
+
+##################################################################################
 
 # Splitting data into training and testing sets
-X1_train, X1_test, y1_train, y1_test = train_test_split(X1_resampled, y1_resampled, test_size=0.2, random_state=42)
+
+X1_train, X1_test, y1_train, y1_test = train_test_split(X1_resampled, y1_resampled, test_size=0.2, random_state=42) #resampled
 
 ####################################### Train Random Forest #######################################
 
