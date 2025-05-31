@@ -160,10 +160,10 @@ st.dataframe(y1.head())
 st.write(f"Original dataset shape: {Counter(y1)}")
 original_counts = Counter(y1) 
 desired_sampling_strategy = {
-    0: 800,
-    1: 800,
-    2: 800,
-    3: 800,
+    0: 600,
+    1: 600,
+    2: 600,
+    3: 600,
     4: 1200,
     5: 1300,
     6: 1300,
@@ -261,3 +261,67 @@ st.write("Classification Report: XGBoost (Survival Class): ")
 report_xgb_dict = classification_report(y1_test, y1_pred_xgb, target_names=class_names, output_dict=True, zero_division=0)
 report_xgb_df = pd.DataFrame(report_xgb_dict).transpose().round(2)
 st.table(report_xgb_df)
+
+##################### Clean noisy points with ENN) ############################
+
+# Clean noisy points with ENN (KNN‐based)
+# -----------------------------------------
+
+# Use ENN to clean noisy points from resampled data
+enn = EditedNearestNeighbours(
+    sampling_strategy='all',
+    n_neighbors=2,
+    kind_sel='all'
+)
+
+X1_cleaned, y1_cleaned = enn.fit_resample(X1_resampled, y1_resampled)
+
+# Print shape of cleaned data
+st.write(f"Shape AFTER ENN cleaning: {Counter(y1_cleaned)}")
+
+# Split cleaned data into training and testing sets
+X1_train_cln, X1_test_cln, y1_train_cln, y1_test_cln = train_test_split(
+    X1_cleaned, 
+    y1_cleaned, 
+    test_size=0.2, 
+    stratify=y1_cleaned, 
+    random_state=42
+)
+
+# Train a Random Forest model on cleaned data
+modelRFC_cln = RandomForestClassifier(random_state=42)
+modelRFC_cln.fit(X1_train_cln, y1_train_cln)
+y1_pred_cln = modelRFC_cln.predict(X1_test_cln)
+
+# Print metrics for cleaned data
+acc_cln = accuracy_score(y1_test_cln, y1_pred_cln)
+bal_acc_cln = balanced_accuracy_score(y1_test_cln, y1_pred_cln)
+prec_cln = precision_score(y1_test_cln, y1_pred_cln, average='weighted', zero_division=0)
+recall_cln = recall_score(y1_test_cln, y1_pred_cln, average='weighted', zero_division=0)
+f1_cln = f1_score(y1_test_cln, y1_pred_cln, average='weighted', zero_division=0)
+
+st.write("### After ENN Cleaning → Random Forest Metrics")
+st.write(f"Accuracy: {acc_cln:.3f}")
+st.write(f"Balanced Accuracy: {bal_acc_cln:.3f}")
+st.write(f"Precision (Weighted): {prec_cln:.3f}")
+st.write(f"Recall (Weighted): {recall_cln:.3f}")
+st.write(f"F1 Score (Weighted): {f1_cln:.3f}")
+
+# Plot confusion matrix for cleaned data
+conf_mat_cln = confusion_matrix(y1_test_cln, y1_pred_cln)
+fig, ax = plt.subplots(figsize=(8, 6))
+sns.heatmap(
+    pd.DataFrame(
+        conf_mat_cln,
+        columns=[f"Pred {name}" for name in class_names],
+        index=[f"Actual {name}" for name in class_names]
+    ),
+    annot=True,
+    cmap="Blues",
+    fmt="d",
+    ax=ax
+)
+ax.set_title("After ENN Cleaning: RF Survival Class Confusion Matrix")
+ax.set_xlabel("Predicted labels")
+ax.set_ylabel("True labels")
+st.pyplot(fig)
