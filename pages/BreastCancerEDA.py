@@ -79,7 +79,7 @@ plot_distribution(data, selected_column)
 st.subheader("Survival Months by Column")
 def plot_survival_by_category(data, category):
     fig, ax = plt.subplots(figsize=(20, 15))
-    sns.countplot(data=data, x=category, hue=data['Survival Months'] // 12, palette=sns.color_palette("muted", 8), ax=ax)
+    sns.countplot(data=data, x=category, hue=data['Survival Months'] // 12, palette=sns.color_palette("muted", 9), ax=ax)
     ax.set_title(f"{category.capitalize()} by Survival Months")
     st.pyplot(fig)
 categories = data.columns.drop('Survival Months')
@@ -109,7 +109,7 @@ st.pyplot(fig)
 # Plotting Status distribution
 st.subheader("Status Distribution")
 fig, ax = plt.subplots()
-sns.countplot(data=data, x='Status', palette=sns.color_palette("muted", 2), ax=ax)
+sns.countplot(data=data, x='Status', hue='Status', palette=sns.color_palette("muted", 2), ax=ax)
 ax.set_title("Distribution of Status")
 st.pyplot(fig)
 
