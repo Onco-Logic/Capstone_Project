@@ -265,7 +265,6 @@ st.table(report_xgb_df)
 ##################### Clean noisy points with ENN) ############################
 
 # Clean noisy points with ENN (KNN‐based)
-# -----------------------------------------
 
 # Use ENN to clean noisy points from resampled data
 enn = EditedNearestNeighbours(
