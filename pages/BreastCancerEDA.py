@@ -7,12 +7,15 @@ import seaborn as sns
 from imblearn.over_sampling import RandomOverSampler
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.decomposition import PCA
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from xgboost import XGBClassifier, XGBRegressor
 from sklearn.metrics import (
     accuracy_score,
     balanced_accuracy_score,
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
     precision_score,
     recall_score,
     f1_score,
@@ -248,7 +251,7 @@ st.table(report_rfc_df)
 
 # Initialize the XGBoost Classifier
 st.subheader("XGBoost Classifier")
-modelXGB = XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='logloss')
+modelXGB = XGBClassifier(random_state=42, eval_metric='logloss')
 modelXGB.fit(X_train, y_train)
 
 # Make predictions and prediction probabilities
@@ -350,77 +353,125 @@ report_svm_dict = classification_report(y_test, y_pred_svm, target_names=['Dead'
 report_svm_df = pd.DataFrame(report_svm_dict).transpose().round(2)
 st.table(report_svm_df)
 
+################################################## Survival Model #############################################
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-################################################## Model Building Survival #############################################
-'''
-st.title("Survival Model")
 st.markdown("---")
-# Notes from Ali for how to handle survival prediction, use at least 3 models for prediction, include
-# f1 scores and seperate binary predictions for status.
-# 
-# less than 1 year consider 0
-# 1-2 consider as 2
-# 3-4 consider as 4
-# 5-6 consider as 6
-# 7-8 consider as 8
-# 9-10 consider as 10
-# 6 class classification
+st.subheader("Survival Model (Multi-Class Classification)")
+st.markdown("---")
 
-# Create the new target column on pdataS
-pdataS['Survival Years'] = pdataS['Survival Months'] // 12
+# 1. Create the new target column 'Survival Class' with 6 categories
+def categorize_survival(months):
+    if months < 12:
+        return 0
+    elif 12 <= months < 24:
+        return 1
+    elif 24 <= months < 48:
+        return 2
+    elif 48 <= months < 72:
+        return 3
+    elif 72 <= months < 96:
+        return 4
+    else:
+        return 5
 
-# Define features (X1) and target (Y1) for pdataS
-# Drop both the original months and the years
-X1 = pdataS.drop(['Survival Months', 'Survival Years'], axis=1)
-#X1 = pdataS.drop(['Survival Months'], axis=1)
-Y1 = pdataS['Survival Years']
-#Y1 = pdataS['Survival Months'] -1
+pdataS['Survival Class'] = pdataS['Survival Months'].apply(categorize_survival)
+
+# Define features (X1) and target (y1) for the classification task
+X1 = pdataS.drop(['Survival Months', 'Survival Class'], axis=1)
+y1 = pdataS['Survival Class']
+
+# Get unique class names for display purposes
+class_names = ['<1 Year', '1-2 Years', '3-4 Years', '5-6 Years', '7-8 Years', '9-10+ Years']
+
+st.subheader("Splitting data into X1 and y1 (Survival Class)")
+st.dataframe(X1.head())
+st.dataframe(y1.head())
+
+# Apply Random Over-Sampling for class imbalance
+RandomSample_survival = RandomOverSampler(random_state=42)
+X1_resampled, y1_resampled = RandomSample_survival.fit_resample(X1, y1)
 
 # Splitting data into training and testing sets
-X1_train, X1_test, Y1_train, Y1_test = train_test_split(X1, Y1, test_size=0.2, random_state=42)
+X1_train, X1_test, y1_train, y1_test = train_test_split(X1_resampled, y1_resampled, test_size=0.2, random_state=42)
 
-# Initialize the Random Forest Classifier
-st.subheader("Random Forest Classifier")
-modelRFC = RandomForestClassifier(n_estimators=600, random_state=42)
+####################################### Train Random Forest #######################################
 
-modelRFC.fit(X1_train, Y1_train)
+st.subheader("Random Forest Classifier (Tuned for Survival Class)")
 
-st.subheader("Model Evaluation")
-st.write(f"Model: {modelRFC}")
+modelRFC_sm = RandomForestClassifier(random_state=42)
+modelRFC_sm.fit(X1_train, y1_train)
 
-Y1_pred = modelRFC.predict(X1_test)
-accuracy = accuracy_score(Y1_test, Y1_pred)
-st.write(f"Model Accuracy: {accuracy:.3f}")
+y1_pred_sm = modelRFC_sm.predict(X1_test)
 
-# Initialize the XGBoost Classifier
-st.subheader("XGBoost Classifier")
+# Overall metrics
+accuracy_rfc = accuracy_score(y1_test, y1_pred_sm)
+balanced_accuracy_rfc = balanced_accuracy_score(y1_test, y1_pred_sm)
+precision_rfc = precision_score(y1_test, y1_pred_sm, average='weighted', zero_division=0)
+recall_rfc = recall_score(y1_test, y1_pred_sm, average='weighted', zero_division=0)
+f1_rfc = f1_score(y1_test, y1_pred_sm, average='weighted', zero_division=0)
 
-modelXGB = XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='logloss')
+st.write(f"Accuracy: {accuracy_rfc:.3f}")
+st.write(f"Balanced Accuracy: {balanced_accuracy_rfc:.3f}")
+st.write(f"Precision (Weighted): {precision_rfc:.3f}")
+st.write(f"Recall (Weighted): {recall_rfc:.3f}")
+st.write(f"F1 Score (Weighted): {f1_rfc:.3f}")
 
-# Train the XGBoost model on the training data
-modelXGB.fit(X1_train, Y1_train)
+# Confusion matrix
+conf_mat_sm = confusion_matrix(y1_test, y1_pred_sm)
+fig, ax = plt.subplots(figsize=(8, 6))
+sns.heatmap(pd.DataFrame(conf_mat_sm,
+    columns=[f"Pred {name}" for name in class_names],
+    index=[f"Actual {name}" for name in class_names]),
+    annot=True, cmap="Blues", fmt="d", ax=ax
+)
+ax.set_title("Random Forest Survival Class Confusion Matrix")
+ax.set_xlabel("Predicted labels")
+ax.set_ylabel("True labels")
+st.pyplot(fig)
 
-st.write(f"Trained Model: {modelXGB}")
+# Classification report
+st.write("Classification Report: Random Forest (Survival Class): ")
+report_rfc_dict = classification_report(y1_test, y1_pred_sm, target_names=class_names, output_dict=True, zero_division=0)
+report_rfc_df = pd.DataFrame(report_rfc_dict).transpose().round(2)
+st.table(report_rfc_df)
 
-# Make predictions on the test data
-Y1_pred_xgb = modelXGB.predict(X1_test)
+####################################### Train XGBoost #######################################
 
-# Calculate the accuracy
-accuracy_xgb = accuracy_score(Y_test, Y1_pred_xgb)
-st.write(f"XGBoost Accuracy on Test Set: {accuracy_xgb:.3f}")
-st.markdown("---")
-'''
+st.subheader("XGBoost Classifier (Survival Class)")
+
+modelXGB_sm = XGBClassifier(random_state=42, eval_metric='logloss')
+modelXGB_sm.fit(X1_train, y1_train)
+
+y1_pred_xgb = modelXGB_sm.predict(X1_test)
+
+# Overall metrics
+accuracy_xgb = accuracy_score(y1_test, y1_pred_xgb)
+balanced_accuracy_xgb = balanced_accuracy_score(y1_test, y1_pred_xgb)
+precision_xgb = precision_score(y1_test, y1_pred_xgb, average='weighted', zero_division=0)
+recall_xgb = recall_score(y1_test, y1_pred_xgb, average='weighted', zero_division=0)
+f1_xgb = f1_score(y1_test, y1_pred_xgb, average='weighted', zero_division=0)
+
+st.write(f"Accuracy: {accuracy_xgb:.3f}")
+st.write(f"Balanced Accuracy: {balanced_accuracy_xgb:.3f}")
+st.write(f"Precision (Weighted): {precision_xgb:.3f}")
+st.write(f"Recall (Weighted): {recall_xgb:.3f}")
+st.write(f"F1 Score (Weighted): {f1_xgb:.3f}")
+
+# Confusion matrix
+conf_mat_xgb = confusion_matrix(y1_test, y1_pred_xgb)
+fig, ax = plt.subplots(figsize=(8, 6))
+sns.heatmap(pd.DataFrame(conf_mat_xgb,
+    columns=[f"Pred {name}" for name in class_names],
+    index=[f"Actual {name}" for name in class_names]),
+    annot=True, cmap="Blues", fmt="d", ax=ax
+)
+ax.set_title("XGBoost Survival Class Confusion Matrix")
+ax.set_xlabel("Predicted labels")
+ax.set_ylabel("True labels")
+st.pyplot(fig)
+
+# Classification report
+st.write("Classification Report: XGBoost (Survival Class): ")
+report_xgb_dict = classification_report(y1_test, y1_pred_xgb, target_names=class_names, output_dict=True, zero_division=0)
+report_xgb_df = pd.DataFrame(report_xgb_dict).transpose().round(2)
+st.table(report_xgb_df)
