@@ -1,9 +1,11 @@
+# This script oversamples dead entries by duplicating them until they're the same amount as alive entries
+
 import pandas as pd
 from sklearn.utils import shuffle
 
 # Define input and output file paths
-input_train_file_path = '../../Data/NM-datasets/Breast_Cancer_train.csv'
-output_balanced_file_path = '../../Data/NM-datasets/Breast_Cancer_train_balanced.csv'
+input_train_file_path = '../../Data/NM-datasets/Breast_Cancer.csv'
+output_balanced_file_path = '../../Data/NM-datasets/Breast_CancerExtra_balanced.csv'
 
 # Load the training dataset
 try:
@@ -33,7 +35,6 @@ if count_dead < count_alive:
     
     # Calculate how many 'Dead' entries to add
     num_to_add = count_alive - count_dead
-    
     oversampled_dead = df_dead.sample(n=num_to_add, replace=True, random_state=100)
     
     # Combine original dead with oversampled dead

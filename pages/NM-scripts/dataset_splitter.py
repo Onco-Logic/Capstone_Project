@@ -1,45 +1,52 @@
+# Takes a random 20% of all entries from the original dataset for validation
+# The remaining 80% go to the training set
+
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
-# Takes 20% of dead entries from the original dataset, adds in an equal amount of alive entries, then inserts them into a val_set.
-# The rest of the entries go to the train_set.
-
-input_path = '../../Data/Breast_Cancer.csv'
+input_path = '../../Data/NM-datasets/Breast_Cancer.csv'
 train_output_path = '../../Data/NM-datasets/Breast_Cancer_train.csv'
 val_output_path = '../../Data/NM-datasets/Breast_Cancer_val.csv'
 
-df = pd.read_csv(input_path)
+# Load the dataset
+try:
+    df = pd.read_csv(input_path)
+    print(f"Dataset loaded from: {input_path}")
+    print(f"Total entries: {len(df)}")
+    print(f"Class distribution in original dataset:")
+    print(f"Alive: {sum(df['Status']=='Alive')} ({100*sum(df['Status']=='Alive')/len(df):.1f}%)")
+    print(f"Dead: {sum(df['Status']=='Dead')} ({100*sum(df['Status']=='Dead')/len(df):.1f}%)")
+except FileNotFoundError:
+    print(f"Error: File not found at {input_path}")
+    exit()
+except Exception as e:
+    print(f"Error reading file: {e}")
+    exit()
 
-alive_df = df[df['Status'] == 'Alive']
-dead_df  = df[df['Status'] == 'Dead']
-
-random_state = 100
-
-# Total count (just in case)
-total = len(dead_df + alive_df)
-
-# Count dead entries that take up 20% of total set
-val_dead_count = int(0.2 * len(dead_df))
-
-# Sample the same number of dead and alive entries for the val_set
-val_dead  = dead_df.sample(n=val_dead_count, random_state=random_state)
-val_alive = alive_df.sample(n=val_dead_count, random_state=random_state)
-
-# Put the rest in the training set
-train_dead  = dead_df.drop(val_dead.index)
-train_alive = alive_df.drop(val_alive.index)
-
-# Combine and shuffle
-val_df   = pd.concat([val_dead, val_alive],   ignore_index=True) \
-             .sample(frac=1, random_state=random_state)
-train_df = pd.concat([train_dead, train_alive], ignore_index=True) \
-             .sample(frac=1, random_state=random_state)
+# Split the dataset
+train_df, val_df = train_test_split(
+    df, 
+    test_size=0.2,
+    random_state=100,
+    stratify=df['Status']
+)
 
 # Save the new sets
-val_df.to_csv(val_output_path,   index=False)
-train_df.to_csv(train_output_path, index=False)
+try:
+    val_df.to_csv(val_output_path, index=False)
+    train_df.to_csv(train_output_path, index=False)
+    print(f"\nFiles saved successfully:")
+    print(f"Validation set: {val_output_path}")
+    print(f"Training set: {train_output_path}")
+except Exception as e:
+    print(f"Error saving files: {e}")
+    exit()
 
-print(f"Total Entries: {total}")
-print(f"Validation Set: {len(val_df)} rows "
-      f"(Alive: {sum(val_df['Status']=='Alive')}, Dead: {sum(val_df['Status']=='Dead')})")
-print(f"Training Set: {len(train_df)} rows "
-      f"(Alive: {sum(train_df['Status']=='Alive')}, Dead: {sum(train_df['Status']=='Dead')})")
+# Print summary
+print(f"\nSplit results:")
+print(f"Validation Set: {len(val_df)} rows ({100*len(val_df)/len(df):.1f}% of total)")
+print(f"  Alive: {sum(val_df['Status']=='Alive')} ({100*sum(val_df['Status']=='Alive')/len(val_df):.1f}%)")
+print(f"  Dead: {sum(val_df['Status']=='Dead')} ({100*sum(val_df['Status']=='Dead')/len(val_df):.1f}%)")
+print(f"Training Set: {len(train_df)} rows ({100*len(train_df)/len(df):.1f}% of total)")
+print(f"  Alive: {sum(train_df['Status']=='Alive')} ({100*sum(train_df['Status']=='Alive')/len(train_df):.1f}%)")
+print(f"  Dead: {sum(train_df['Status']=='Dead')} ({100*sum(train_df['Status']=='Dead')/len(train_df):.1f}%)")

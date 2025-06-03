@@ -12,7 +12,7 @@ n_top_features = 10 # Number of features per component
 file_name = '../../Data/NM-datasets/Breast_Cancer.csv'
 df = pd.read_csv(file_name)
 
-# --- 2. Preprocess the Data ---
+# Preprocess
 X = df.drop('Status', axis=1)
 
 # Identify numerical and categorical features
