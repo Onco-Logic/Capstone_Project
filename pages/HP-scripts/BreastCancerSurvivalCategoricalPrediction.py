@@ -35,6 +35,10 @@ def categorize_survival(months):
     else:
         return 8
 
+# ENN (parameter = 2) is used to remove noise from the dataset
+# Use random over-sampling to balance the dataset
+# Use Random Forest Survival Prediction Model
+
 
 # Load the raw and balanced dataset
 filepathRaw = 'Data/Breast_Cancer.csv'
