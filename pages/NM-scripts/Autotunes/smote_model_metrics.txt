@@ -10,7 +10,7 @@ Class          Precision    Recall       F1-Score
 -----------------------------------------------
 Alive (0)      94.07%       95.31%       94.68%
 Dead (1)       71.93%       66.67%       69.20%
-Average        83.00%   80.99%   81.94%
+Average        83.00%       80.99%       81.94%
 
 Overall Val Accuracy: 90.93%
 Alive Val Recall: 95.31%

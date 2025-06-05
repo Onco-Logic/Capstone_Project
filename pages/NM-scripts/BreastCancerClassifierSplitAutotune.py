@@ -1,26 +1,26 @@
 import pandas as pd
 import random
 import joblib
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score, mean_squared_error, mean_absolute_error
 from sklearn.preprocessing import LabelEncoder
 from imblearn.over_sampling import RandomOverSampler
 import os
 import re
 
 # File Paths
-train_data_path = '../../Data/NM-datasets/Breast_Cancer_train.csv'
+train_data_path = '../../Data/NM-datasets/Breast_Cancer_train_smote.csv'
 val_data_path = '../../Data/NM-datasets/Breast_Cancer_val.csv'
 
-dataset_type = "normal"
+dataset_type = "Status-Survival"
 
 best_f1_avg = -1.0
 best_model_params = None
 
 # Check if previous best metrics exist
-if os.path.exists('best_model_metrics.txt'):
+if os.path.exists(f'{dataset_type}_model_metrics.txt'):
     try:
-        with open('best_model_metrics.txt', 'r') as f:
+        with open(f'{dataset_type}_model_metrics.txt', 'r') as f:
             metrics_text = f.read()
             # Extract F1-Score using regex
             match = re.search(r'Average F1-Score: (\d+\.\d+)%', metrics_text)
@@ -61,12 +61,26 @@ val_df = pd.read_csv(val_data_path)
 X_train_raw = train_df.drop('Status', axis=1)
 X_val_raw = val_df.drop('Status', axis=1)
 
+
+# Survival Months
+Y_train_survival = train_df['Survival Months']
+Y_val_survival = val_df['Survival Months']
+X_cls_train = X_train_raw.drop('Survival Months', axis=1)
+X_cls_val = X_val_raw.drop('Survival Months', axis=1)
+
 le = LabelEncoder()
 Y_train_encoded = le.fit_transform(train_df['Status']) # 0 = Alive, 1 = Dead
 Y_val = le.transform(val_df['Status'])
 
+# Drop target columns
 X_train = pd.get_dummies(X_train_raw, drop_first=True)
 X_val = pd.get_dummies(X_val_raw, drop_first=True)
+X_reg_train = X_train.drop(columns=['Survival Months'])
+X_reg_val = X_val.drop(columns=['Survival Months'])
+
+common = sorted(set(X_reg_train.columns) & set(X_reg_val.columns))
+X_reg_train = X_reg_train[common]
+X_reg_val = X_reg_val[common]
 
 # Align columns to ensure consistency
 train_cols = X_train.columns
@@ -80,7 +94,7 @@ for c in missing_in_train:
 X_val = X_val[train_cols]
 
 # Balance Training Data via Oversampling
-oversampler = RandomOverSampler(random_state=42)
+oversampler = RandomOverSampler(random_state=100)
 X_train_resampled, Y_train_resampled = oversampler.fit_resample(X_train, Y_train_encoded)
 
 # Data & Class Distribution Info
@@ -101,7 +115,7 @@ print(f"Total validation records: {len(Y_val)}")
 
 
 # Hyperparameter Tuning Loop
-param_space = {
+class_param_space = {
     'n_estimators': [10, 20, 30, 40, 50, 100, 150, 200, 250, 300, 350, 400, 500],
     'criterion': ['gini', 'entropy'],
     'max_depth': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, None],
@@ -112,9 +126,21 @@ param_space = {
     'class_weight': [None, 'balanced', 'balanced_subsample']
 }
 
+best_reg_mae = float('inf')
+best_reg_params = None
+reg_param_space = {
+    'n_estimators': [10, 20, 30, 40, 50, 100, 150, 200, 250, 300, 350, 400, 500],
+    'criterion': ['absolute_error', 'squared_error', 'friedman_mse', 'poisson'],
+    'max_depth': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, None],
+    'min_samples_split': [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15],
+    'min_samples_leaf': [1, 2, 3, 4, 5, 6, 7, 8],
+    'max_features': ['sqrt', 'log2', None, 0.3, 0.5, 0.7],
+    'bootstrap': [True, False]
+}
+
 for trial in range(1, num_trials + 1):
     print(f"\n--- Starting Trial {trial}/{num_trials} ---")
-    current_params = {key: random.choice(value) for key, value in param_space.items()}
+    current_params = {key: random.choice(value) for key, value in class_param_space.items()}
     print("Testing with parameters:")
     print(current_params)
 
@@ -246,6 +272,39 @@ for trial in range(1, num_trials + 1):
         print(f"Metrics saved to 'Autotunes/{dataset_type}_model_metrics.txt'")
     else:
         print(f"\nDid not beat the best Average F1-Score of {100*best_f1_avg:.2f}% :C")
+    
+    current_reg_params = {k: random.choice(v) for k,v in reg_param_space.items()}
+
+    print("\nTesting regressor with params:", current_reg_params)
+
+    reg = RandomForestRegressor(random_state=100, **current_reg_params)
+    reg.fit(X_reg_train, Y_train_survival)
+    y_val_pred = reg.predict(X_reg_val)
+    val_mae    = mean_absolute_error(Y_val_survival, y_val_pred)
+    print(f"Validation MAE: {val_mae:.2f} months")
+
+    # Same thing as classifier
+    if val_mae < best_reg_mae:
+        best_reg_mae    = val_mae
+        best_reg_params = current_reg_params
+
+        joblib.dump(reg, f'Autotunes/{dataset_type}_regressor_model.joblib')
+
+        reg_metrics = (
+            f"--- BEST REGRESSOR METRICS ---\n"
+            f"Date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"Validation MAE: {best_reg_mae:.2f} months\n"
+            f"Parameters:\n"
+        )
+        for p, v in best_reg_params.items():
+            reg_metrics += f"  {p}: {v}\n"
+
+        with open(f'Autotunes/{dataset_type}_regressor_metrics.txt', 'w') as mf:
+            mf.write(reg_metrics)
+
+        print(f"\nNew best regressor! 🥳 MAE: {best_reg_mae:.2f} -> saved:")
+        print(f"    Model -> Autotunes/{dataset_type}_regressor_model.joblib")
+        print(f"    Metrics -> Autotunes/{dataset_type}_regressor_metrics.txt")
 
 print("\n--- Training complete ---")
 print(f"The best model achieved an Average F1-Score of: {100*best_f1_avg:.2f}%")

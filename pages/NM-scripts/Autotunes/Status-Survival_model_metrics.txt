@@ -1,0 +1,39 @@
+--- BEST MODEL METRICS ---
+Date: 2025-06-04 22:35:45
+
+True Alive: 649
+False Alive: 33
+False Dead: 43
+True Dead: 80
+
+Class          Precision    Recall       F1-Score
+-----------------------------------------------
+Alive (0)      93.79%       95.16%       94.47%
+Dead (1)       70.80%       65.04%       67.80%
+Average        82.29%   80.10%   81.13%
+
+Overall Val Accuracy: 90.56%
+Alive Val Recall: 95.16%
+Dead Val Recall: 65.04%
+Average F1-Score: 81.13%
+
+--- Overfitting Analysis for Best Model ---
+Metric             Training    Validation   Difference
+------------------------------------------------------
+Overall Accuracy   95.85%       90.56%      5.30%
+F1 Alive (0)       95.91%       94.47%      1.45%
+F1 Dead (1)        95.79%       67.80%      28.00%
+Precision Alive(0) 94.55%       93.79%      0.76%
+Precision Dead(1)  97.24%       70.80%      26.44%
+Recall Alive (0)   97.32%       95.16%      2.16%
+Recall Dead (1)    94.39%       65.04%      29.35%
+
+Best Model Parameters:
+n_estimators: 30
+criterion: gini
+max_depth: 55
+min_samples_split: 10
+min_samples_leaf: 8
+bootstrap: False
+max_features: 0.5
+class_weight: balanced_subsample

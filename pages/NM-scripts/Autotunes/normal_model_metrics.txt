@@ -1,39 +1,39 @@
 --- BEST MODEL METRICS ---
-Date: 2025-05-30 13:41:45
+Date: 2025-06-04 22:08:34
 
-True Alive: 638
-False Alive: 44
-False Dead: 37
-True Dead: 86
+True Alive: 646
+False Alive: 36
+False Dead: 44
+True Dead: 79
 
 Class          Precision    Recall       F1-Score
 -----------------------------------------------
-Alive (0)      94.52%       93.55%       94.03%
-Dead (1)       66.15%       69.92%       67.98%
-Average        80.34%   81.73%   81.01%
+Alive (0)      93.62%       94.72%       94.17%
+Dead (1)       68.70%       64.23%       66.39%
+Average        81.16%   79.47%   80.28%
 
-Overall Val Accuracy: 89.94%
-Alive Val Recall: 93.55%
-Dead Val Recall: 69.92%
-Average F1-Score: 81.01%
+Overall Val Accuracy: 90.06%
+Alive Val Recall: 94.72%
+Dead Val Recall: 64.23%
+Average F1-Score: 80.28%
 
 --- Overfitting Analysis for Best Model ---
 Metric             Training    Validation   Difference
 ------------------------------------------------------
-Overall Accuracy   97.84%       89.94%      7.90%
-F1 Alive (0)       97.84%       94.03%      3.81%
-F1 Dead (1)        97.83%       67.98%      29.85%
-Precision Alive(0) 97.77%       94.52%      3.25%
-Precision Dead(1)  97.91%       66.15%      31.75%
-Recall Alive (0)   97.91%       93.55%      4.36%
-Recall Dead (1)    97.76%       69.92%      27.84%
+Overall Accuracy   96.83%       90.06%      6.76%
+F1 Alive (0)       96.86%       94.17%      2.69%
+F1 Dead (1)        96.79%       66.39%      30.41%
+Precision Alive(0) 95.83%       93.62%      2.21%
+Precision Dead(1)  97.86%       68.70%      29.17%
+Recall Alive (0)   97.91%       94.72%      3.19%
+Recall Dead (1)    95.74%       64.23%      31.52%
 
 Best Model Parameters:
-n_estimators: 30
+n_estimators: 150
 criterion: gini
-max_depth: 25
-min_samples_split: 12
-min_samples_leaf: 5
-bootstrap: False
-max_features: sqrt
-class_weight: balanced_subsample
+max_depth: 20
+min_samples_split: 8
+min_samples_leaf: 3
+bootstrap: True
+max_features: 0.5
+class_weight: None

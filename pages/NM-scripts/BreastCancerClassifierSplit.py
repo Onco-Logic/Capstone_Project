@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score, mean_squared_error, mean_absolute_error
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import KFold
 
@@ -10,7 +10,7 @@ from sklearn.model_selection import KFold
 folds = 5
 
 # File paths
-train_data_path = '../../Data/NM-datasets/Breast_Cancer_train_undersampled.csv'
+train_data_path = '../../Data/NM-datasets/Breast_Cancer_train_smote.csv'
 val_data_path = '../../Data/NM-datasets/Breast_Cancer_val.csv'
 
 # --- Data Loading and Preparation ---
@@ -24,12 +24,14 @@ le = LabelEncoder()
 
 # Prepare Training Data
 X_train_raw = train_df.drop('Status', axis=1)
-Y_train = le.fit_transform(train_df['Status']) # 0 = Alive, 1 = Dead
+Y_train_status = le.fit_transform(train_df['Status']) # 0 = Alive, 1 = Dead
+Y_train_survival = train_df['Survival Months']
 X_train = pd.get_dummies(X_train_raw, drop_first=True)
 
 # Prepare Validation Data
-X_val_raw = val_df.drop('Status', axis=1)
-Y_val = le.transform(val_df['Status'])
+X_val_raw = val_df.drop(['Status', 'Survival Months'], axis=1)
+Y_val_status = le.transform(val_df['Status'])
+Y_val_survival = val_df['Survival Months']
 X_val = pd.get_dummies(X_val_raw, drop_first=True)
 
 # Align columns between training and validation sets
@@ -40,17 +42,17 @@ X_val = X_val[common_cols].reindex(columns=sorted(common_cols))
 # Data Information
 print(f"\nData split into {len(X_train)} training samples and {len(X_val)} validation samples.")
 
-train_alive_count = (Y_train == 0).sum()
-train_dead_count = (Y_train == 1).sum()
-print(f"\nTotal Training Records: {len(Y_train)}")
-print(f"Total Alive records: {train_alive_count} ({100 * train_alive_count / len(Y_train):.1f}%)")
-print(f"Total Dead records: {train_dead_count} ({100 * train_dead_count / len(Y_train):.1f}%)")
+train_alive_count = (Y_train_status == 0).sum()
+train_dead_count = (Y_train_status == 1).sum()
+print(f"\nTotal Training Records: {len(Y_train_status)}")
+print(f"Total Alive records: {train_alive_count} ({100 * train_alive_count / len(Y_train_status):.1f}%)")
+print(f"Total Dead records: {train_dead_count} ({100 * train_dead_count / len(Y_train_status):.1f}%)")
 
-val_alive_count = (Y_val == 0).sum()
-val_dead_count = (Y_val == 1).sum()
-print(f"\nTotal Validation Records: {len(Y_val)}")
-print(f"Total Alive records: {val_alive_count} ({100 * val_alive_count / len(Y_val):.1f}%)")
-print(f"Total Dead records: {val_dead_count} ({100 * val_dead_count / len(Y_val):.1f}%)")
+val_alive_count = (Y_val_status == 0).sum()
+val_dead_count = (Y_val_status == 1).sum()
+print(f"\nTotal Validation Records: {len(Y_val_status)}")
+print(f"Total Alive records: {val_alive_count} ({100 * val_alive_count / len(Y_val_status):.1f}%)")
+print(f"Total Dead records: {val_dead_count} ({100 * val_dead_count / len(Y_val_status):.1f}%)")
 
 # Check for duplicates between training and validation sets
 X_train_tuples = [tuple(x) for x in X_train.values]
@@ -77,9 +79,9 @@ kfold_results = {
     'test_cm': []
 }
 
-for fold_num, (train_idx, test_idx) in enumerate(kf.split(X_train, Y_train)):
+for fold_num, (train_idx, test_idx) in enumerate(kf.split(X_train, Y_train_status)):
     X_fold_train, X_fold_test = X_train.iloc[train_idx], X_train.iloc[test_idx]
-    Y_fold_train, Y_fold_test = Y_train[train_idx], Y_train[test_idx]
+    Y_fold_train, Y_fold_test = Y_train_status[train_idx], Y_train_status[test_idx]
 
     model_fold = RandomForestClassifier(random_state=100)
     model_fold.fit(X_fold_train, Y_fold_train)
@@ -158,11 +160,25 @@ print_average_kfold_metrics(
     np.mean(kfold_results['test_recall_dead']),
     np.mean(kfold_results['test_f1_dead']),
     f"Average {folds}-Fold Test (Held-out Fold) Metrics")
+    
 
 # Final Model Training and Evaluation
 print("\n--- Final Model Evaluation (Trained on Full Training Set) ---")
 final_model = RandomForestClassifier(random_state=100)
-final_model.fit(X_train, Y_train)
+
+final_model.fit(X_train, Y_train_status)
+
+rf_reg = RandomForestRegressor(random_state=100)
+
+rf_reg.fit(X_train, Y_train_survival)
+
+for name, y_true, y_pred in [
+    ("Training", Y_train_survival, rf_reg.predict(X_train)),
+    ("Validation", Y_val_survival, rf_reg.predict(X_val))
+]:
+    mse = mean_squared_error(y_true, y_pred)
+    mae = mean_absolute_error(y_true, y_pred)
+
 
 def print_evaluation_metrics(Y_true, Y_pred, dataset_name="Dataset"):
     cm = confusion_matrix(Y_true, Y_pred)
@@ -186,11 +202,11 @@ def print_evaluation_metrics(Y_true, Y_pred, dataset_name="Dataset"):
 
 # Training Set Evaluation
 Y_train_pred_final = final_model.predict(X_train)
-train_acc, train_precision, train_recall, train_f1 = print_evaluation_metrics(Y_train, Y_train_pred_final, "Training Set")
+train_acc, train_precision, train_recall, train_f1 = print_evaluation_metrics(Y_train_status, Y_train_pred_final, "Training Set")
 
 # Validation Set Evaluation
 Y_val_pred_final = final_model.predict(X_val)
-val_acc, val_precision, val_recall, val_f1 = print_evaluation_metrics(Y_val, Y_val_pred_final, "Validation Set")
+val_acc, val_precision, val_recall, val_f1 = print_evaluation_metrics(Y_val_status, Y_val_pred_final, "Validation Set")
 
 # Overfitting Analysis
 print("\nOverfitting Analysis")
@@ -207,6 +223,10 @@ print(f"Recall Dead        {100*train_recall[1]:.2f}%       {100*val_recall[1]:.
 accuracy_diff = train_acc - val_acc
 f1_alive_diff = train_f1[0] - val_f1[0]
 f1_dead_diff = train_f1[1] - val_f1[1]
+
+print(f"\n{name} Survival Months Performance:")
+print(f"  MSE: {mse:.2f}")
+print(f"  MAE: {mae:.2f}")
 
 print(f"\nAccuracy Difference: {accuracy_diff * 100:.2f}%")
 print(f"F1 Alive Difference: {f1_alive_diff * 100:.2f}%")

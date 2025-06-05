@@ -1,11 +1,11 @@
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score, mean_absolute_error, mean_squared_error
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 
 # File path
-data_path = '../../Data/NM-datasets/Breast_CancerExtra_balanced_double_double.csv'
+data_path = '../../Data/NM-datasets/Breast_CancerExtra_balanced_double.csv'
 
 # Load the dataset
 print(f"Loading data from: {data_path}")
@@ -15,14 +15,23 @@ df = pd.read_csv(data_path)
 X_raw = df.drop('Status', axis=1)
 Y_raw = df['Status']
 
+Y_survival = df['Survival Months']
+X_reg_raw = X_raw.drop('Survival Months', axis=1)
+
 # Encode categorical features and the target variable
 X = pd.get_dummies(X_raw, drop_first=True)
+X_reg = pd.get_dummies(X_reg_raw, drop_first=True)
 le = LabelEncoder()
 Y = le.fit_transform(Y_raw) # 0 = Alive, 1 = Dead
 
 # Split data into 80% training and 20% validation
 X_train, X_val, Y_train, Y_val = train_test_split(
     X, Y, test_size=0.20, random_state=100, stratify=Y
+)
+
+# Split regression data
+X_reg_train, X_reg_val, Y_train_survival, Y_val_survival = train_test_split(
+    X_reg, Y_survival, test_size=0.20, random_state=100
 )
 
 # Check for duplicates
@@ -47,7 +56,6 @@ print(f"Total validation records: {len(Y_val)}")
 
 # Random Forest Classifier
 clf = RandomForestClassifier(random_state=100)
-print("\nTraining RandomForestClassifier...")
 clf.fit(X_train, Y_train)
 
 print("Testing on validation set...")
@@ -84,6 +92,20 @@ dead_accuracy = 100 * (true_dead / (true_dead + false_dead))
 print(f"\nOverall Accuracy: {accuracy_percent:.2f}%")
 print(f"Alive Accuracy: {alive_accuracy:.2f}%")
 print(f"Dead Accuracy: {dead_accuracy:.2f}%")
+
+# Regressor Stuff
+print("\n --- Survival Months --- ")
+reg = RandomForestRegressor(random_state=100)
+reg.fit(X_reg_train, Y_train_survival)
+
+y_val_pred = reg.predict(X_reg_val)
+
+# Regressor metrics
+val_mse = mean_squared_error(Y_val_survival, y_val_pred)
+val_mae = mean_absolute_error(Y_val_survival, y_val_pred)
+
+print(f"Validation MSE: {val_mse:.4f}")
+print(f"Validation MAE: {val_mae:.4f} months")
 
 # Duplicate print stuff
 overlap = set(X_train_tuples).intersection(set(X_val_tuples))

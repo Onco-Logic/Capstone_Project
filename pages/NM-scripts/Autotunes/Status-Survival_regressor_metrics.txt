@@ -1,0 +1,12 @@
+--- BEST REGRESSOR METRICS ---
+Date: 2025-06-04 22:40:23
+
+Validation MAE: 19.08 months
+Parameters:
+  n_estimators: 100
+  criterion: poisson
+  max_depth: 15
+  min_samples_split: 10
+  min_samples_leaf: 8
+  max_features: sqrt
+  bootstrap: True
