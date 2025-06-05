@@ -130,10 +130,10 @@ st.write("After SMOTE training‐set counts:", dict(Counter(y_sm)))
 
 
 #############################################
-# 4) RANDOM FOREST WITH GRIDSEARCH TUNING
+# 4) RANDOM FOREST WITH RANDOM OVERSAMPLING + SMOTE
 #############################################
 
-st.subheader("4. Random Forest Hyperparameter Tuning")
+st.subheader("Random Forest (Random Oversampling + SMOTE)")
 
 # Use class_weight='balanced' so RF penalizes majority classes less
 rfc = RandomForestClassifier(random_state=42, class_weight='balanced')
@@ -156,7 +156,7 @@ grid_rf = GridSearchCV(
     verbose=1
 )
 
-# Fit on the SMOTE→ENN→PCA training set
+# Fit on the SMOTE training set
 grid_rf.fit(X_sm, y_sm)
 best_rfc = grid_rf.best_estimator_
 st.write("Best RF params:", grid_rf.best_params_)
@@ -196,20 +196,25 @@ report_rfc_dict = classification_report(y_test, rf_preds, target_names=class_nam
 report_rfc_df = pd.DataFrame(report_rfc_dict).transpose().round(2)
 st.table(report_rfc_df)
 
-#-------------ENN Results------------------------------#
+#############################################
+# 5) RANDOM FOREST WITH RANDOM OVERSAMPLING + SMOTE + ENN
+#############################################
+
+st.subheader("Random Forest (Random Oversampling + SMOTE + ENN)")
 
 # ▶️ CHANGE: Apply EditedNearestNeighbours to remove noisy neighbors that SMOTE may have introduced
 enn = EditedNearestNeighbours(sampling_strategy='all', n_neighbors=2, kind_sel='all')
-X_res, y_res = enn.fit_resample(X_sm, y_sm)
+X_enn, y_enn = enn.fit_resample(X_sm, y_sm)
 
-st.write("Counts after SMOTE → ENN:", dict(Counter(y_res)))
+st.write("Counts after SMOTE → ENN:", dict(Counter(y_enn)))
 X_enn_train, X_enn_test, y_enn_train, y_enn_test = train_test_split(
-    X_res, y_res, test_size=0.2, random_state=42, stratify=y_res
+    X_enn, y_enn, test_size=0.2, random_state=42, stratify=y_enn
 )
 
-grid_rf.fit(X_enn_train, y_enn_train)
-y_enn_pred = grid_rf.predict(X_enn_test)
-st.write("Best RF params:", grid_rf.best_params_)
+rfc_enn = RandomForestClassifier(random_state=42, class_weight='balanced')
+
+rfc_enn.fit(X_enn_train, y_enn_train)
+y_enn_pred = rfc_enn.predict(X_enn_test)
 
 # Overall metrics
 accuracy_rfc = accuracy_score(y_enn_test, y_enn_pred)
@@ -244,10 +249,10 @@ report_rfc_df = pd.DataFrame(report_rfc_dict).transpose().round(2)
 st.table(report_rfc_df)
 
 #############################################
-# 5) XGBOOST WITH GRIDSEARCH TUNING
+# 6) XGBOOST WITH RANDOM OVERSAMPLING + SMOTE
 #############################################
 
-st.subheader("5. XGBoost Hyperparameter Tuning")
+st.subheader("XGBoost (Random Oversampling + SMOTE)")
 
 # When using XGBoost, we pass scale_pos_weight, but since it's multiclass, we'll rely on SMOTE balancing + objective='multi:softmax'
 xgb = XGBClassifier(
@@ -310,22 +315,170 @@ ax_xgb.set_xlabel("Predicted Labels")
 ax_xgb.set_ylabel("True Labels")
 st.pyplot(fig_xgb)
 
-####################################### Train XGBoost #######################################
+#############################################
+# 7) XGBOOST WITH RANDOM OVERSAMPLING + SMOTE + ENN
+#############################################
 
-# # Model 2: XGBoost
-# xgb = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss', random_state=42)
-# xgb.fit(X_train_scaled, y_train)
-# xgb_preds = xgb.predict(X_test_scaled)
+st.subheader("XGBoost (Random Oversampling + SMOTE + ENN)")
 
-# # Model 3: Support Vector Machine
-# svm = SVC(probability=True, random_state=42)
-# svm.fit(X_train_scaled, y_train)
-# svm_preds = svm.predict(X_test_scaled)
+# Apply EditedNearestNeighbours to the SMOTE‐balanced data
+enn_xgb = EditedNearestNeighbours(sampling_strategy='all', n_neighbors=2, kind_sel='all')
+X_res_xgb, y_res_xgb = enn_xgb.fit_resample(X_sm, y_sm)
+st.write("Counts after SMOTE → ENN:", dict(Counter(y_res_xgb)))
 
-# # Evaluation
-# models = {'Random Forest': rf_preds, 'XGBoost': xgb_preds, 'SVM': svm_preds}
-# for name, preds in models.items():
-#     print(f"\n{name} Results:")
-#     print("Accuracy:", accuracy_score(y_test, preds))
-#     print("Confusion Matrix:\n", confusion_matrix(y_test, preds))
-#     print("Classification Report:\n", classification_report(y_test, preds))
+# Split the resampled data into train and test sets
+X_enn_xgb_train, X_enn_xgb_test, y_enn_xgb_train, y_enn_xgb_test = train_test_split(
+    X_res_xgb, y_res_xgb, test_size=0.2, random_state=42, stratify=y_res_xgb
+)
+# Fit XGBoost on the ENN‐resampled data
+grid_xgb.fit(X_enn_xgb_train, y_enn_xgb_train)
+best_xgb = grid_xgb.best_estimator_
+
+st.write("Best XGB params:", grid_xgb.best_params_)
+
+# Predict on the original test set
+xgb_preds = best_xgb.predict(X_enn_xgb_test)
+
+accuracy_xgb = accuracy_score(y_enn_xgb_test, xgb_preds)
+balanced_accuracy_xgb = balanced_accuracy_score(y_enn_xgb_test, xgb_preds)
+report_xgb = classification_report(
+    y_enn_xgb_test, xgb_preds, target_names=class_names, zero_division=0
+)
+
+st.write(f"XGB Overall Accuracy: {accuracy_xgb:.3f}")
+st.write(f"XGB Balanced Accuracy: {balanced_accuracy_xgb:.3f}")
+st.write("XGBoost Classification Report:")
+st.text(report_xgb)
+
+# ─── CONFUSION MATRIX VISUALIZATION ────────────────────────────────────────
+conf_mat_xgb = confusion_matrix(y_enn_xgb_test, xgb_preds)
+fig_xgb, ax_xgb = plt.subplots(figsize=(8, 6))
+sns.heatmap(
+    pd.DataFrame(
+        conf_mat_xgb,
+        index=[f"Actual {cn}" for cn in class_names],
+        columns=[f"Pred {cn}" for cn in class_names]
+    ),
+    annot=True, fmt="d", cmap="Greens", ax=ax_xgb
+)
+ax_xgb.set_title("Tuned XGB: Survival Class Confusion Matrix")
+ax_xgb.set_xlabel("Predicted Labels")
+ax_xgb.set_ylabel("True Labels")
+st.pyplot(fig_xgb)
+
+#############################################
+# 8) SUPPORT VECTOR MACHINE WITH SMOTE
+#############################################
+
+st.subheader("SVM (SMOTE)")
+
+svm = SVC(class_weight='balanced', probability=False, random_state=42)
+
+param_grid_svm = {
+    "C": [0.1, 1, 10],
+    "kernel": ["linear", "rbf"],
+    "gamma": ["scale", "auto"]
+}
+
+grid_svm = GridSearchCV(
+    estimator=svm,
+    param_grid=param_grid_svm,
+    cv=3,
+    scoring='accuracy',
+    n_jobs=-1,
+    verbose=1
+)
+
+grid_svm.fit(X_sm, y_sm)
+best_svm = grid_svm.best_estimator_
+st.write("Best SVM params:", grid_svm.best_params_)
+
+svm_preds = best_svm.predict(X_test_scaled)
+
+accuracy_svm = accuracy_score(y_test, svm_preds)
+balanced_accuracy_svm = balanced_accuracy_score(y_test, svm_preds)
+precision_svm = precision_score(y_test, svm_preds, average='weighted', zero_division=0)
+recall_svm = recall_score(y_test, svm_preds, average='weighted', zero_division=0)
+f1_svm = f1_score(y_test, svm_preds, average='weighted', zero_division=0)
+
+st.write(f"Accuracy: {accuracy_svm:.3f}")
+st.write(f"Balanced Accuracy: {balanced_accuracy_svm:.3f}")
+st.write(f"Precision (Weighted): {precision_svm:.3f}")
+st.write(f"Recall (Weighted): {recall_svm:.3f}")
+st.write(f"F1 Score (Weighted): {f1_svm:.3f}")
+
+conf_mat_svm = confusion_matrix(y_test, svm_preds)
+fig_svm, ax_svm = plt.subplots(figsize=(8, 6))
+sns.heatmap(
+    pd.DataFrame(
+        conf_mat_svm,
+        columns=[f"Pred {name}" for name in class_names],
+        index=[f"Actual {name}" for name in class_names]
+    ),
+    annot=True, cmap="Oranges", fmt="d", ax=ax_svm
+)
+ax_svm.set_title("SVM (SMOTE) Survival Class Confusion Matrix")
+ax_svm.set_xlabel("Predicted labels")
+ax_svm.set_ylabel("True labels")
+st.pyplot(fig_svm)
+
+st.write("Classification Report: SVM (SMOTE):")
+report_svm_dict = classification_report(
+    y_test, svm_preds, target_names=class_names, output_dict=True, zero_division=0
+)
+report_svm_df = pd.DataFrame(report_svm_dict).transpose().round(2)
+st.table(report_svm_df)
+
+#############################################
+# 9) SUPPORT VECTOR MACHINE WITH SMOTE + ENN
+#############################################
+
+st.subheader("SVM (SMOTE + ENN)")
+
+enn_svm = EditedNearestNeighbours(sampling_strategy='all', n_neighbors=2, kind_sel='all')
+X_res_svm, y_res_svm = enn_svm.fit_resample(X_sm, y_sm)
+st.write("Counts after SMOTE → ENN (SVM):", dict(Counter(y_res_svm)))
+
+X_enn_svm_train, X_enn_svm_test, y_enn_svm_train, y_enn_svm_test = train_test_split(
+    X_res_svm, y_res_svm, test_size=0.2, random_state=42, stratify=y_res_svm
+)
+
+grid_svm.fit(X_enn_svm_train, y_enn_svm_train)
+best_svm_enn = grid_svm.best_estimator_
+st.write("Best SVM params (ENN):", grid_svm.best_params_)
+
+svm_preds_enn = best_svm_enn.predict(X_enn_svm_test)
+
+accuracy_svm_enn = accuracy_score(y_enn_svm_test, svm_preds_enn)
+balanced_accuracy_svm_enn = balanced_accuracy_score(y_enn_svm_test, svm_preds_enn)
+precision_svm_enn = precision_score(y_enn_svm_test, svm_preds_enn, average='weighted', zero_division=0)
+recall_svm_enn = recall_score(y_enn_svm_test, svm_preds_enn, average='weighted', zero_division=0)
+f1_svm_enn = f1_score(y_enn_svm_test, svm_preds_enn, average='weighted', zero_division=0)
+
+st.write(f"Accuracy: {accuracy_svm_enn:.3f}")
+st.write(f"Balanced Accuracy: {balanced_accuracy_svm_enn:.3f}")
+st.write(f"Precision (Weighted): {precision_svm_enn:.3f}")
+st.write(f"Recall (Weighted): {recall_svm_enn:.3f}")
+st.write(f"F1 Score (Weighted): {f1_svm_enn:.3f}")
+
+conf_mat_svm_enn = confusion_matrix(y_enn_svm_test, svm_preds_enn)
+fig_svm_enn, ax_svm_enn = plt.subplots(figsize=(8, 6))
+sns.heatmap(
+    pd.DataFrame(
+        conf_mat_svm_enn,
+        columns=[f"Pred {name}" for name in class_names],
+        index=[f"Actual {name}" for name in class_names]
+    ),
+    annot=True, cmap="Oranges", fmt="d", ax=ax_svm_enn
+)
+ax_svm_enn.set_title("SVM (SMOTE + ENN) Survival Class Confusion Matrix")
+ax_svm_enn.set_xlabel("Predicted labels")
+ax_svm_enn.set_ylabel("True labels")
+st.pyplot(fig_svm_enn)
+
+st.write("Classification Report: SVM (SMOTE + ENN):")
+report_svm_enn_dict = classification_report(
+    y_enn_svm_test, svm_preds_enn, target_names=class_names, output_dict=True, zero_division=0
+)
+report_svm_enn_df = pd.DataFrame(report_svm_enn_dict).transpose().round(2)
+st.table(report_svm_enn_df)
