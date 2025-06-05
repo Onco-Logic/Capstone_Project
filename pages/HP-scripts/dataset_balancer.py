@@ -24,13 +24,13 @@ dead_df  = df[df['Status'] == 'Dead']
 alive_df = df[df['Status'] == 'Alive']
 
 # Report original counts
-num_dead  = len(dead_df)
-num_alive = len(alive_df)
-print(f'Original counts -> alive: {num_alive}, dead: {num_dead}')
+count_dead  = len(dead_df)
+count_alive = len(alive_df)
+print(f'Original counts -> Alive: {count_alive}, Dead: {count_dead}')
 
 # Oversample dead rows if needed
-if num_dead < num_alive:
-    n_to_sample = num_alive - num_dead
+if count_dead < count_alive:
+    n_to_sample = count_alive - count_dead
     sampled_dead = dead_df.sample(n=n_to_sample, replace=True, random_state=42)
     df = pd.concat([df, sampled_dead], ignore_index=True)
     print(f'Duplicated {n_to_sample} dead rows.')
@@ -48,7 +48,9 @@ df.to_csv(output_path, index=False)
 print(f'Balanced dataset saved to {output_path}')
 
 # Report new counts
+final_alive = len(df[df['Status'] == 'Alive'])
+final_dead  = len(df[df['Status'] == 'Dead'])
 print(
-    f'New counts -> alive: {len(df[df["Status"]=="Alive"])}, '
-    f'dead: {len(df[df["Status"]=="Dead"])}'
+    f'New counts -> alive: {final_alive}, '
+    f'dead: {final_dead}'
 )
