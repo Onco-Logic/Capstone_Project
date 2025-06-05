@@ -6,7 +6,9 @@ import seaborn as sns
 
 # ─── IMBALANCE‐HANDLING IMPORTS ───────────────────────────────────────────────
 from imblearn.over_sampling import RandomOverSampler, SMOTE, KMeansSMOTE
+from imblearn.under_sampling import RandomUnderSampler
 from imblearn.combine import SMOTEENN, SMOTETomek
+from imblearn.pipeline import Pipeline as ImbPipeline
 from collections import Counter
 
 # ─── SKLEARN / XGBOOST IMPORTS ────────────────────────────────────────────────
@@ -124,10 +126,8 @@ st.write("Original training‐set counts:", dict(original_counts))
 smote = SMOTE(random_state=42)
 X_sm, y_sm = smote.fit_resample(X_train_scaled, y_train)
 
-balanced_counts = Counter(y_sm)
-st.write("After SMOTE training‐set counts:", dict(balanced_counts))
+st.write("After SMOTE training‐set counts:", dict(Counter(y_sm)))
 
-# ─── Now X_sm, y_sm are our balanced training arrays ────────────────────────
 
 #############################################
 # 4) RANDOM FOREST WITH GRIDSEARCH TUNING
@@ -139,6 +139,7 @@ st.subheader("4. Random Forest Hyperparameter Tuning")
 rfc = RandomForestClassifier(random_state=42, class_weight='balanced')
 
 # Choose a small hyperparameter grid to keep runtime reasonable
+# ▶️ CHANGE: Slightly expanded RF grid (added max_features, bootstrap)
 param_grid_rf = {
     "n_estimators": [100, 200],       # try 100 and 200 trees
     "max_depth": [None, 10, 20],      # no max, or depth 10/20
@@ -155,10 +156,9 @@ grid_rf = GridSearchCV(
     verbose=1
 )
 
-# Fit on the SMOTE‐balanced training set
+# Fit on the SMOTE→ENN→PCA training set
 grid_rf.fit(X_sm, y_sm)
 best_rfc = grid_rf.best_estimator_
-
 st.write("Best RF params:", grid_rf.best_params_)
 
 # Predict on the original (un‐oversampled) test set
@@ -193,6 +193,53 @@ st.pyplot(fig_rf)
 # Classification report
 st.write("Classification Report: Random Forest (Survival Class): ")
 report_rfc_dict = classification_report(y_test, rf_preds, target_names=class_names, output_dict=True, zero_division=0)
+report_rfc_df = pd.DataFrame(report_rfc_dict).transpose().round(2)
+st.table(report_rfc_df)
+
+#-------------ENN Results------------------------------#
+
+# ▶️ CHANGE: Apply EditedNearestNeighbours to remove noisy neighbors that SMOTE may have introduced
+enn = EditedNearestNeighbours(sampling_strategy='all', n_neighbors=2, kind_sel='all')
+X_res, y_res = enn.fit_resample(X_sm, y_sm)
+
+st.write("Counts after SMOTE → ENN:", dict(Counter(y_res)))
+X_enn_train, X_enn_test, y_enn_train, y_enn_test = train_test_split(
+    X_res, y_res, test_size=0.2, random_state=42, stratify=y_res
+)
+
+grid_rf.fit(X_enn_train, y_enn_train)
+y_enn_pred = grid_rf.predict(X_enn_test)
+st.write("Best RF params:", grid_rf.best_params_)
+
+# Overall metrics
+accuracy_rfc = accuracy_score(y_enn_test, y_enn_pred)
+balanced_accuracy_rfc = balanced_accuracy_score(y_enn_test, y_enn_pred)
+precision_rfc = precision_score(y_enn_test, y_enn_pred, average='weighted', zero_division=0)
+recall_rfc = recall_score(y_enn_test, y_enn_pred, average='weighted', zero_division=0)
+f1_rfc = f1_score(y_enn_test, y_enn_pred, average='weighted', zero_division=0)
+
+st.write(f"Accuracy: {accuracy_rfc:.3f}")
+st.write(f"Balanced Accuracy: {balanced_accuracy_rfc:.3f}")
+st.write(f"Precision (Weighted): {precision_rfc:.3f}")
+st.write(f"Recall (Weighted): {recall_rfc:.3f}")
+st.write(f"F1 Score (Weighted): {f1_rfc:.3f}")
+
+# Confusion matrix
+conf_mat_rf = confusion_matrix(y_enn_test, y_enn_pred)
+fig_rf, ax_rf = plt.subplots(figsize=(8, 6))
+sns.heatmap(pd.DataFrame(conf_mat_rf,
+    columns=[f"Pred {name}" for name in class_names],
+    index=[f"Actual {name}" for name in class_names]),
+    annot=True, cmap="Blues", fmt="d", ax=ax_rf
+)
+ax_rf.set_title("Random Forest Survival Class Confusion Matrix")
+ax_rf.set_xlabel("Predicted labels")
+ax_rf.set_ylabel("True labels")
+st.pyplot(fig_rf)
+
+# Classification report
+st.write("Classification Report: Random Forest (Survival Class): ")
+report_rfc_dict = classification_report(y_enn_test, y_enn_pred, target_names=class_names, output_dict=True, zero_division=0)
 report_rfc_df = pd.DataFrame(report_rfc_dict).transpose().round(2)
 st.table(report_rfc_df)
 
