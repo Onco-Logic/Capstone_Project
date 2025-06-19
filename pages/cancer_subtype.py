@@ -14,7 +14,7 @@ from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from matplotlib.lines import Line2D
-from sklearn.metrics import ConfusionMatrixDisplay, accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.metrics import ConfusionMatrixDisplay, accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
 
 # Load tab-delimited text file into a DataFrame
 df_x = pd.read_csv('Data/cancer_subtype_data.csv')
@@ -203,12 +203,17 @@ def train_model(model, data):
     st.write("Average Recall:", np.mean(recalls))
     st.write("Average F1 Score:", np.mean(f1_scores))
 
-    st.write("Confusion Matrix")
+    st.write("Confusion Matrix:")
     cm = confusion_matrix(all_y_true, all_y_pred, labels=np.unique(y))
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=np.unique(y))
     fig, ax = plt.subplots(figsize=(6, 5))
     disp.plot(ax=ax, cmap="Blues", xticks_rotation=45)
     st.pyplot(fig)
+
+    # Classification Report
+    st.write("Classification Report:")
+    report = classification_report(all_y_true, all_y_pred)
+    st.text(report)
 
 # Train models on original, filtered, and UMAP data
 for dataset, label in [(df, "Original"), (df_filtered, "Filtered"), (dmap_df, "UMAP")]:
