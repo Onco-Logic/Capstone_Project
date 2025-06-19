@@ -18,8 +18,6 @@ from sklearn.metrics import ConfusionMatrixDisplay, accuracy_score, balanced_acc
 
 # Load tab-delimited text file into a DataFrame
 df_x = pd.read_csv('Data/cancer_subtype_data.csv')
-
-# Load tab-delimited text file into a DataFrame
 df_y = pd.read_csv('Data/cancer_subtype_labels.csv')
 
 ### Basic Exploratory Data Analysis ####################################################################################
@@ -86,7 +84,6 @@ X_pca = pca.fit_transform(X_scaled)
 kmeans = KMeans(n_clusters=5, random_state=42)
 clusters = kmeans.fit_predict(X_scaled)
 
-# Visualize the clusters
 plt.figure(figsize=(8, 6))
 plt.scatter(X_pca[:, 0], X_pca[:, 1], c=clusters, cmap='viridis', marker='o', alpha=0.5)
 plt.xlabel('Principal Component 1')
@@ -95,27 +92,19 @@ plt.title('KMeans Clustering')
 plt.colorbar(label='Cluster')
 st.pyplot(plt)
 
-########################################################################################################################
-# Calculate feature variances
+# Variance Thresholding
 features = df.drop(columns='Class')
 variances = features.var()
 
-# Show summary statistics
 st.write("Summary of Feature Variances:")
 st.write(variances.describe())
 
-# Plot histogram
 st.subheader("Distribution of Gene Variances")
 plt.figure(figsize=(8, 4))
 sns.histplot(variances, bins=100, kde=True)
 plt.xlabel("Variance")
 plt.ylabel("Number of Genes")
 st.pyplot(plt)
-
-''' 
-The majority of genes have have very low variance and dont change across samples or subtypes.
-This indicates that the data is not very useful for classification tasks. 
-'''
 
 threshold = 0.5
 selector = VarianceThreshold(threshold=threshold)
@@ -138,7 +127,6 @@ X_pca_filt = pca_filt.fit_transform(X_scaled_filt)
 kmeans_filt = KMeans(n_clusters=5, random_state=42)
 clusters_filt = kmeans_filt.fit_predict(X_scaled_filt)
 
-# Visualize the clusters on filtered data
 plt.figure(figsize=(8, 6))
 plt.scatter(X_pca_filt[:, 0], X_pca_filt[:, 1], c=clusters_filt, cmap='viridis', marker='o', alpha=0.5)
 plt.xlabel('Principal Component 1')
@@ -148,61 +136,51 @@ plt.colorbar(label='Cluster')
 st.pyplot(plt)
 
 st.write(df_filtered.shape)
-#########################################################################################################################
 
+### UMAP ################################################################################################################
 st.subheader("UMAP Visualization (on Original Data)")
 
-# Prepare X and y
 df_x_umap = df.drop(columns=['Class'])
 scaler_umap = StandardScaler()
 X_scaled_umap = scaler_umap.fit_transform(df_x_umap)
 
-# Run UMAP on original full data
 reducer = umap.UMAP(n_components=20, n_neighbors=5, min_dist=1, random_state=42)
 df_umap_full = reducer.fit_transform(X_scaled_umap)
 
-# Encode class labels for coloring
+# Convert UMAP output to DataFrame and add Class
+dmap_df = pd.DataFrame(df_umap_full, columns=[f"UMAP_{i+1}" for i in range(df_umap_full.shape[1])])
+dmap_df["Class"] = df["Class"].values
+
 label_encoder = LabelEncoder()
 label_ids = label_encoder.fit_transform(df['Class'])
 class_names = label_encoder.classes_
 
-# Plot
 plt.figure(figsize=(8, 6))
 scatter = plt.scatter(df_umap_full[:, 0], df_umap_full[:, 1], c=label_ids, cmap='tab10', alpha=0.6)
 plt.xlabel("UMAP Component 1")
 plt.ylabel("UMAP Component 2")
 plt.title("UMAP Projection (Original Data, Colored by Class)")
 
-# Legend
 legend_elements = [
     Line2D([0], [0], marker='o', color='w', label=class_names[i],
            markerfacecolor=plt.cm.tab10(i / len(class_names)), markersize=8)
     for i in range(len(class_names))
 ]
 plt.legend(handles=legend_elements, title="Class", bbox_to_anchor=(1.05, 1), loc='upper left')
-
 st.pyplot(plt)
 st.write(df_umap_full.shape)
-#########################################################################################################################
 
-### Train and Evaluate Decision Tree Models (with 3-fold cross-validation) ##############################################
+### Train and Evaluate Model ################################################################################################
 def train_model(model, data):
     X = data.drop(columns=['Class'])
     y = data['Class']
 
     st.subheader(f"Model: {model.__class__.__name__}")
 
-    accuracies = []
-    balanced_accuracies = []
-    precisions = []
-    recalls = []
-    f1_scores = []
-
-    all_y_true = []
-    all_y_pred = []
+    accuracies, balanced_accuracies, precisions, recalls, f1_scores = [], [], [], [], []
+    all_y_true, all_y_pred = [], []
 
     kf = KFold(n_splits=3, shuffle=True, random_state=42)
-
     for train_index, test_index in kf.split(X):
         X_train, X_test = X.iloc[train_index], X.iloc[test_index]
         y_train, y_test = y.iloc[train_index], y.iloc[test_index]
@@ -219,47 +197,21 @@ def train_model(model, data):
         recalls.append(recall_score(y_test, y_pred, average='weighted'))
         f1_scores.append(f1_score(y_test, y_pred, average='weighted'))
 
-    avg_accuracy = sum(accuracies) / len(accuracies)
-    avg_balanced_accuracy = sum(balanced_accuracies) / len(balanced_accuracies)
-    avg_precision = sum(precisions) / len(precisions)
-    avg_recall = sum(recalls) / len(recalls)
-    avg_f1 = sum(f1_scores) / len(f1_scores)
+    st.write("Average Accuracy:", np.mean(accuracies))
+    st.write("Average Balanced Accuracy:", np.mean(balanced_accuracies))
+    st.write("Average Precision:", np.mean(precisions))
+    st.write("Average Recall:", np.mean(recalls))
+    st.write("Average F1 Score:", np.mean(f1_scores))
 
-    st.write("Average Accuracy:", avg_accuracy)
-    st.write("Average Balanced Accuracy:", avg_balanced_accuracy)
-    st.write("Average Precision:", avg_precision)
-    st.write("Average Recall:", avg_recall)
-    st.write("Average F1 Score:", avg_f1)
-
-    # --- Confusion Matrix ---
-    st.subheader("Confusion Matrix")
+    st.write("Confusion Matrix")
     cm = confusion_matrix(all_y_true, all_y_pred, labels=np.unique(y))
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=np.unique(y))
-
     fig, ax = plt.subplots(figsize=(6, 5))
     disp.plot(ax=ax, cmap="Blues", xticks_rotation=45)
     st.pyplot(fig)
 
-# Train a decision tree model
-model = DecisionTreeClassifier()
-train_model(model, df)
-
-# Train a random forest model
-model = RandomForestClassifier()
-train_model(model, df)
-
-# Train a decision tree model on filtered data
-model = DecisionTreeClassifier()
-train_model(model, df_filtered)
-
-# Train a random forest model on filtered data
-model = RandomForestClassifier()
-train_model(model, df_filtered)
-
-# Train a decision tree model on UMAP data
-model = DecisionTreeClassifier()
-train_model(model, df_filtered)
-
-# Train a random forest model on UMAP data
-model = RandomForestClassifier()
-train_model(model, df_filtered)
+# Train models on original, filtered, and UMAP data
+for dataset, label in [(df, "Original"), (df_filtered, "Filtered"), (dmap_df, "UMAP")]:
+    st.markdown(f"### Training on {label} Data")
+    train_model(DecisionTreeClassifier(), dataset)
+    train_model(RandomForestClassifier(), dataset)
