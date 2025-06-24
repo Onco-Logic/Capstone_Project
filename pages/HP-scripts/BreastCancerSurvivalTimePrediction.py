@@ -62,6 +62,13 @@ for i in dfEncoded.columns:
     if dfEncoded[i].dtype == 'object':
         dfEncoded[i] = le.fit_transform(dfEncoded[i])
 
+# Encode categorical variables
+le2 = LabelEncoder()
+dfEncodedRaw = dfRaw.copy()
+for i in dfEncodedRaw.columns:
+    if dfEncodedRaw[i].dtype == 'object':
+        dfEncodedRaw[i] = le2.fit_transform(dfEncodedRaw[i])
+
 st.subheader("Encoded Dataset")
 st.dataframe(dfEncoded.head())
 
@@ -87,9 +94,16 @@ def categorize_survival(months):
 # Define features and new categorized target
 dfEncoded['Survival Class'] = dfEncoded['Survival Months'].apply(categorize_survival)
 
+# Define features and new categorized target
+dfEncodedRaw['Survival Class'] = dfEncodedRaw['Survival Months'].apply(categorize_survival)
+
 # Drop original “Status” and “Survival Months” from features
 X = dfEncoded.drop(['Status', 'Survival Months', 'Survival Class'], axis=1)
 y = dfEncoded['Survival Class']
+
+# Drop original “Status” and “Survival Months” from features
+XRaw = dfEncodedRaw.drop(['Status', 'Survival Months', 'Survival Class'], axis=1)
+yRaw = dfEncodedRaw['Survival Class']
 
 # Get unique class names for display purposes
 class_names = [
@@ -109,6 +123,10 @@ st.dataframe(y.head())
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y)
 
+# Train-test split (raw)
+X_train_raw, X_test_raw, y_train_raw, y_test_raw = train_test_split(
+    XRaw, yRaw, test_size=0.2, random_state=42, stratify=yRaw)
+
 # Standard scaling
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
@@ -119,14 +137,50 @@ X_test_scaled = scaler.transform(X_test)
 #############################################
 
 # Check original training‐set class distribution
-original_counts = Counter(y_train)
+original_counts = Counter(y_train_raw)
 st.write("Original training‐set counts:", dict(original_counts))
+
+# >>> NEW CODE: Plot distribution for ORIGINAL TRAINING‐SET <<<
+df_orig = pd.DataFrame.from_dict(original_counts, orient='index', columns=['Count']).reset_index().rename(columns={'index': 'Class'})
+fig_orig, ax_orig = plt.subplots(figsize=(6, 4))
+sns.barplot(x='Class', y='Count', data=df_orig, palette='Blues_d', ax=ax_orig)
+ax_orig.set_title("Original Training‐Set Distribution")
+ax_orig.set_xlabel("Survival Class")
+ax_orig.set_ylabel("Count")
+st.pyplot(fig_orig)
+# <<< END NEW CODE >>>
+
+
+# Check oversampling training‐set class distribution
+ros_counts = Counter(y_train)
+st.write("Random Over-Sampling training‐set counts:", dict(ros_counts))
+
+# >>> NEW CODE: Plot distribution for ORIGINAL TRAINING‐SET <<<
+df_ros= pd.DataFrame.from_dict(ros_counts, orient='index', columns=['Count']).reset_index().rename(columns={'index': 'Class'})
+fig_ros, ax_ros = plt.subplots(figsize=(6, 4))
+sns.barplot(x='Class', y='Count', data=df_ros, palette='Blues_d', ax=ax_ros)
+ax_orig.set_title("Random Over-Sampling Training‐Set Distribution")
+ax_orig.set_xlabel("Survival Class")
+ax_orig.set_ylabel("Count")
+st.pyplot(fig_ros)
+# <<< END NEW CODE >>>
 
 # (a) Use SMOTE + RandomOverSampler to upsample rare bins
 smote = SMOTE(random_state=42)
 X_sm, y_sm = smote.fit_resample(X_train_scaled, y_train)
 
 st.write("After SMOTE training‐set counts:", dict(Counter(y_sm)))
+
+# >>> NEW CODE: Plot distribution for AFTER SMOTE <<<
+sm_counts = Counter(y_sm)
+df_sm = pd.DataFrame.from_dict(sm_counts, orient='index', columns=['Count']).reset_index().rename(columns={'index': 'Class'})
+fig_sm, ax_sm = plt.subplots(figsize=(6, 4))
+sns.barplot(x='Class', y='Count', data=df_sm, palette='Greens_d', ax=ax_sm)
+ax_sm.set_title("After SMOTE Distribution")
+ax_sm.set_xlabel("Survival Class")
+ax_sm.set_ylabel("Count")
+st.pyplot(fig_sm)
+# <<< END NEW CODE >>>
 
 
 #############################################
@@ -207,6 +261,18 @@ enn = EditedNearestNeighbours(sampling_strategy='all', n_neighbors=2, kind_sel='
 X_enn, y_enn = enn.fit_resample(X_sm, y_sm)
 
 st.write("Counts after SMOTE → ENN:", dict(Counter(y_enn)))
+
+# >>> NEW CODE: Plot distribution for AFTER SMOTE+ENN <<<
+enn_counts = Counter(y_enn)
+df_enn = pd.DataFrame.from_dict(enn_counts, orient='index', columns=['Count']).reset_index().rename(columns={'index': 'Class'})
+fig_enn, ax_enn = plt.subplots(figsize=(6, 4))
+sns.barplot(x='Class', y='Count', data=df_enn, palette='Oranges_d', ax=ax_enn)
+ax_enn.set_title("After SMOTE+ENN Distribution")
+ax_enn.set_xlabel("Survival Class")
+ax_enn.set_ylabel("Count")
+st.pyplot(fig_enn)
+# <<< END NEW CODE >>>
+
 X_enn_train, X_enn_test, y_enn_train, y_enn_test = train_test_split(
     X_enn, y_enn, test_size=0.2, random_state=42, stratify=y_enn
 )
@@ -482,3 +548,44 @@ report_svm_enn_dict = classification_report(
 )
 report_svm_enn_df = pd.DataFrame(report_svm_enn_dict).transpose().round(2)
 st.table(report_svm_enn_df)
+
+# >>> NEW CODE: Combined distribution plot <<<
+# Prepare class labels 0–5
+classes = list(range(6))
+
+# Extract counts for each stage
+orig_list = [original_counts.get(c, 0) for c in classes]
+ros_list  = [ros_counts.get(c, 0) for c in classes]
+sm_list   = [sm_counts.get(c, 0) for c in classes]
+enn_list  = [enn_counts.get(c, 0) for c in classes]
+
+# Build a DataFrame with one column per stage
+df_combined = pd.DataFrame({
+    'Class': classes,
+    'Original': orig_list,
+    'Oversampled': ros_list,
+    'SMOTE': sm_list,
+    'SMOTE+ENN': enn_list
+})
+
+# Melt into long form for seaborn
+df_melted = df_combined.melt(
+    id_vars='Class',
+    var_name='Stage',
+    value_name='Count'
+)
+
+# Plot grouped bar chart
+fig_comb, ax_comb = plt.subplots(figsize=(10, 6))
+sns.barplot(
+    x='Class',
+    y='Count',
+    hue='Stage',
+    data=df_melted,
+    ax=ax_comb
+)
+ax_comb.set_title("Class Distribution: Original vs. Oversampled vs. SMOTE vs. SMOTE+ENN")
+ax_comb.set_xlabel("Survival Class")
+ax_comb.set_ylabel("Count")
+st.pyplot(fig_comb)
+# <<< END NEW CODE >>>
