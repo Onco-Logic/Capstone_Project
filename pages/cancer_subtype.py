@@ -12,9 +12,18 @@ from sklearn.decomposition import PCA
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
 from matplotlib.lines import Line2D
-from sklearn.metrics import ConfusionMatrixDisplay, accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
+from sklearn.metrics import (
+    ConfusionMatrixDisplay, 
+    accuracy_score, 
+    balanced_accuracy_score, 
+    precision_score, 
+    recall_score, 
+    f1_score, 
+    confusion_matrix, 
+    classification_report
+)
 
 # Load tab-delimited text file into a DataFrame
 df_x = pd.read_csv('Data/cancer_subtype_data.csv')
@@ -144,7 +153,7 @@ df_x_umap = df.drop(columns=['Class'])
 scaler_umap = StandardScaler()
 X_scaled_umap = scaler_umap.fit_transform(df_x_umap)
 
-reducer = umap.UMAP(n_components=20, n_neighbors=5, min_dist=1, random_state=42)
+reducer = umap.UMAP(n_components=100, n_neighbors=5, min_dist=1, random_state=42)
 df_umap_full = reducer.fit_transform(X_scaled_umap)
 
 # Convert UMAP output to DataFrame and add Class
@@ -215,8 +224,31 @@ def train_model(model, data):
     report = classification_report(all_y_true, all_y_pred)
     st.text(report)
 
+    # SHAP Feature Importance
+    st.subheader("SHAP Feature Importance")
+    model.fit(X, y)
+
+    try:
+        explainer = shap.Explainer(model, X)
+    except Exception:
+        background = shap.sample(X, 100, random_state=42)
+        explainer = shap.KernelExplainer(model.predict_proba, background)
+
+    shap_values = explainer(X)
+
+    shap.summary_plot(
+        shap_values,
+        features=X,
+        feature_names=X.columns,
+        plot_type="bar",
+        max_display=20,
+        show=False,
+    )
+    st.pyplot(plt.gcf(), clear_figure=True)
+
 # Train models on original, filtered, and UMAP data
 for dataset, label in [(df, "Original"), (df_filtered, "Filtered"), (dmap_df, "UMAP")]:
     st.markdown(f"### Training on {label} Data")
     train_model(DecisionTreeClassifier(), dataset)
     train_model(RandomForestClassifier(), dataset)
+    train_model(ExtraTreesClassifier(), dataset)
