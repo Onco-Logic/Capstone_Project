@@ -6,13 +6,15 @@ import seaborn as sns
 import umap.umap_ as umap
 import shap
 
+from sklearn.base import clone
+from sklearn.svm import LinearSVC
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.decomposition import PCA
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
+from sklearn.ensemble import RandomForestClassifier
 from matplotlib.lines import Line2D
 from sklearn.metrics import (
     ConfusionMatrixDisplay, 
@@ -57,7 +59,11 @@ st.write(df.duplicated().sum())
 
 # Missing Value Assessment
 grouped_df = df.groupby('Class')
-missing_values_per_class = grouped_df.apply(lambda x: x.isnull().sum().sum())
+missing_values_per_class = (
+    df.drop(columns='Class')
+    .groupby(df['Class'])
+    .apply(lambda x: x.isnull().sum().sum())
+)
 
 # Get the value counts for the specified column
 value_counts = df[column_name].value_counts()
@@ -179,6 +185,36 @@ plt.legend(handles=legend_elements, title="Class", bbox_to_anchor=(1.05, 1), loc
 st.pyplot(plt)
 st.write(df_umap_full.shape)
 
+######## Top 350 Genes ################################################################################################################
+K = 350
+features = df.drop(columns=["Class"])
+variances = features.var()
+
+top_k_genes = variances.sort_values(ascending=False).head(K).index
+
+st.write("Top 5 genes selected by variance:", list(top_k_genes)) ######## checking
+
+df_topk = df[top_k_genes.tolist() + ["Class"]]
+
+st.subheader("PCA on Top‑350 Variance Genes")
+
+X_top = df_topk.drop(columns=["Class"])
+X_top_scaled = StandardScaler().fit_transform(X_top)
+
+pca_top = PCA(n_components=2, random_state=42)
+X_pca_top = pca_top.fit_transform(X_top_scaled)
+
+kmeans_top = KMeans(n_clusters=5, random_state=42)
+clusters_top = kmeans_top.fit_predict(X_top_scaled)
+
+plt.figure(figsize=(8, 6))
+plt.scatter(X_pca_top[:, 0], X_pca_top[:, 1], c=clusters_top, cmap="viridis", alpha=0.5)
+plt.xlabel("PC1")
+plt.ylabel("PC2")
+plt.title("KMeans clusters (Top‑350 genes, PCA 2‑D)")
+plt.colorbar(label="Cluster")
+st.pyplot(plt)
+
 ### Train and Evaluate Model ################################################################################################
 def train_model(model, data):
     X = data.drop(columns=['Class'])
@@ -240,15 +276,36 @@ def train_model(model, data):
         shap_values,
         features=X,
         feature_names=X.columns,
+        class_names=np.unique(y),
         plot_type="bar",
         max_display=20,
         show=False,
     )
     st.pyplot(plt.gcf(), clear_figure=True)
 
+    # Label-Shuffling Sanity Test
+    st.markdown("#### Label‑Shuffling Sanity Test")
+
+    y_shuffled = y.sample(frac=1.0, random_state=42).reset_index(drop=True)
+
+    shuffle_accs = []
+    for train_idx, test_idx in kf.split(X):
+        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+        y_train, y_test = y_shuffled.iloc[train_idx], y_shuffled.iloc[test_idx]
+
+        clf = clone(model)
+        clf.fit(X_train, y_train)
+        y_pred = clf.predict(X_test)
+
+        shuffle_accs.append(accuracy_score(y_test, y_pred))
+
+    chance_level = 1 / y.nunique()
+    st.write(f"Expected chance accuracy: {chance_level:.3f}")
+    st.write(f"Shuffled labels accuracy: {np.mean(shuffle_accs):.3f} ± {np.std(shuffle_accs):.3f}")
+
 # Train models on original, filtered, and UMAP data
-for dataset, label in [(df, "Original"), (df_filtered, "Filtered"), (dmap_df, "UMAP")]:
+for dataset, label in [(df, "Original"), (df_filtered, "Filtered"), (dmap_df, "UMAP"), (df_topk, "TopK")]:
     st.markdown(f"### Training on {label} Data")
     train_model(DecisionTreeClassifier(), dataset)
     train_model(RandomForestClassifier(), dataset)
-    train_model(ExtraTreesClassifier(), dataset)
+    train_model(LinearSVC(max_iter=10000, dual=False), dataset)
