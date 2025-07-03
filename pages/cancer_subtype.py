@@ -153,37 +153,32 @@ st.pyplot(plt)
 st.write(df_filtered.shape)
 
 ### UMAP ################################################################################################################
-st.subheader("UMAP Visualization (on Original Data)")
+st.subheader("UMAP Visualization (Unsupervised Clusters)")
 
-df_x_umap = df.drop(columns=['Class'])
-scaler_umap = StandardScaler()
-X_scaled_umap = scaler_umap.fit_transform(df_x_umap)
+# Scale features
+df_x_umap   = df.drop(columns=["Class"])
+X_scaled_umap = StandardScaler().fit_transform(df_x_umap)
 
-reducer = umap.UMAP(n_components=100, n_neighbors=5, min_dist=1, random_state=42)
-df_umap_full = reducer.fit_transform(X_scaled_umap)
+# UMAP reduction (retain 100 dims for later modelling; plot first 2)
+reducer   = umap.UMAP(n_components=100, n_neighbors=5, min_dist=1, random_state=42)
+X_umap    = reducer.fit_transform(X_scaled_umap)
 
-# Convert UMAP output to DataFrame and add Class
-dmap_df = pd.DataFrame(df_umap_full, columns=[f"UMAP_{i+1}" for i in range(df_umap_full.shape[1])])
-dmap_df["Class"] = df["Class"].values
+# K-Means clustering (same K=5 as other sections)
+kmeans_umap   = KMeans(n_clusters=5, random_state=42)
+clusters_umap = kmeans_umap.fit_predict(X_scaled_umap)
 
-label_encoder = LabelEncoder()
-label_ids = label_encoder.fit_transform(df['Class'])
-class_names = label_encoder.classes_
-
+# Scatter plot coloured by the unsupervised clusters
 plt.figure(figsize=(8, 6))
-scatter = plt.scatter(df_umap_full[:, 0], df_umap_full[:, 1], c=label_ids, cmap='tab10', alpha=0.6)
+plt.scatter(X_umap[:, 0], X_umap[:, 1], c=clusters_umap, cmap="viridis", alpha=0.6)
 plt.xlabel("UMAP Component 1")
 plt.ylabel("UMAP Component 2")
-plt.title("UMAP Projection (Original Data, Colored by Class)")
-
-legend_elements = [
-    Line2D([0], [0], marker='o', color='w', label=class_names[i],
-           markerfacecolor=plt.cm.tab10(i / len(class_names)), markersize=8)
-    for i in range(len(class_names))
-]
-plt.legend(handles=legend_elements, title="Class", bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.title("UMAP Projection (K-Means Clusters)")
+plt.colorbar(label="Cluster")
 st.pyplot(plt)
-st.write(df_umap_full.shape)
+
+# DataFrame for downstream modelling (keeps 100-dim UMAP plus true labels)
+dmap_df = pd.DataFrame(X_umap, columns=[f"UMAP_{i+1}" for i in range(X_umap.shape[1])])
+dmap_df["Class"] = df["Class"].values
 
 ######## Top 350 Genes ################################################################################################################
 K = 350
