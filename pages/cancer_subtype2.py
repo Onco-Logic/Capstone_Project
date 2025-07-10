@@ -8,7 +8,7 @@ import shap
 
 from matplotlib.lines import Line2D
 from sklearn.base import clone
-from sklearn.svm import LinearSVC
+from sklearn.linear_model import SGDClassifier
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -17,20 +17,11 @@ from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
-    ConfusionMatrixDisplay,
-    accuracy_score,
-    balanced_accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    confusion_matrix,
-    classification_report,
-    adjusted_rand_score,
-    normalized_mutual_info_score,
-    homogeneity_score,
-    completeness_score,
-    v_measure_score,
-    silhouette_score,
+    ConfusionMatrixDisplay, accuracy_score, balanced_accuracy_score,
+    precision_score, recall_score, f1_score, confusion_matrix,
+    classification_report, adjusted_rand_score, normalized_mutual_info_score,
+    homogeneity_score, completeness_score, v_measure_score,
+    silhouette_score
 )
 
 # ───────────────────────────────────────────────────────────
@@ -65,8 +56,7 @@ def plot_step(name, X_2d, cluster_labels, X_full, true_labels):
     with col1:
         st.markdown(f"##### {name}: K-Means clusters")
         fig_c, ax_c = plt.subplots(figsize=(5, 4))
-        pts = ax_c.scatter(X_2d[:, 0], X_2d[:, 1],
-                           c=cluster_labels, cmap="viridis", alpha=0.6)
+        pts = ax_c.scatter(X_2d[:, 0], X_2d[:, 1], c=cluster_labels, cmap="viridis", alpha=0.6)
         ax_c.set_xlabel("Component 1"); ax_c.set_ylabel("Component 2")
         fig_c.colorbar(pts, ax=ax_c, label="Cluster")
         st.pyplot(fig_c)
@@ -81,12 +71,11 @@ def plot_step(name, X_2d, cluster_labels, X_full, true_labels):
         ax_t.set_xlabel("Component 1"); ax_t.set_ylabel("Component 2")
         handles = [
             Line2D([0], [0], marker='o', color='w',
-                   markerfacecolor=plt.cm.tab10(i / max(1, len(class_names))),
-                   markersize=8, label=cls)
+                markerfacecolor=plt.cm.tab10(i / max(1, len(class_names))),
+                markersize=8, label=cls)
             for i, cls in enumerate(class_names)
         ]
-        ax_t.legend(handles=handles, title="Class",
-                    bbox_to_anchor=(1.05, 1), loc="upper left")
+        ax_t.legend(handles=handles, title="Class", bbox_to_anchor=(1.05, 1), loc="upper left")
         st.pyplot(fig_t)
 
     # metrics
@@ -127,12 +116,30 @@ plot_step("PCA", X_pca_full, clusters_full, X_full, df["Class"])
 # 2) variance-threshold → PCA
 # ───────────────────────────────────────────────────────────
 st.subheader("Variance threshold → PCA")
+
 selector = VarianceThreshold(0.5).fit(df.drop(columns="Class"))
 df_filt = df.iloc[:, list(selector.get_support(indices=True)) + [-1]]
+
 X_filt = StandardScaler().fit_transform(df_filt.drop(columns="Class"))
 X_pca_filt = PCA(n_components=2).fit_transform(X_filt)
 clusters_filt = KMeans(n_clusters=5, random_state=42).fit_predict(X_filt)
+
 plot_step("PCA (filtered)", X_pca_filt, clusters_filt, X_filt, df_filt["Class"])
+
+# Log scaled variance threshold → PCA
+st.subheader("Variance threshold → PCA (with Log Scaling)")
+
+df_log_scaled = pd.DataFrame(np.log1p(df.drop(columns="Class")), columns=df.drop(columns="Class").columns)
+selector_log = VarianceThreshold(0.5).fit(df_log_scaled)
+
+df_filt_log = df.iloc[:, list(selector_log.get_support(indices=True)) + [-1]]
+X_filt_log = np.log1p(df_filt_log.drop(columns="Class"))
+X_filt_log_scaled = StandardScaler().fit_transform(X_filt_log)
+
+X_pca_filt_log = PCA(n_components=2).fit_transform(X_filt_log_scaled)
+clusters_filt_log = KMeans(n_clusters=5, random_state=42).fit_predict(X_filt_log_scaled)
+
+plot_step("PCA (filtered, log-scaled)", X_pca_filt_log, clusters_filt_log, X_filt_log_scaled, df_filt_log["Class"])
 
 # ───────────────────────────────────────────────────────────
 # 3) UMAP (100-D) + K-Means
@@ -165,14 +172,32 @@ X_pca_top = PCA(n_components=2, random_state=42).fit_transform(X_top)
 clusters_top = KMeans(n_clusters=5, random_state=42).fit_predict(X_top)
 plot_step("PCA (top-350)", X_pca_top, clusters_top, X_top, df_topk["Class"])
 
+# Top-350 variance genes log scaled
+st.subheader("Top-350 variance genes → PCA (with Log Scaling)")
+df_log_scaled_for_variance = pd.DataFrame(np.log1p(df.drop(columns="Class")), columns=df.drop(columns="Class").columns)
+K_GENES = 350
+top_genes_log = (
+    df_log_scaled_for_variance.var().sort_values(ascending=False).head(K_GENES).index
+)
+df_topk_log = df[top_genes_log.tolist() + ["Class"]]
+
+X_top_log = np.log1p(df_topk_log.drop(columns="Class"))
+X_top_log_scaled = StandardScaler().fit_transform(X_top_log)
+X_pca_top_log = PCA(n_components=2, random_state=42).fit_transform(X_top_log_scaled)
+clusters_top_log = KMeans(n_clusters=5, random_state=42).fit_predict(X_top_log_scaled)
+plot_step("PCA (top-350, log-scaled)", X_pca_top_log, clusters_top_log, X_top_log_scaled, df_topk_log["Class"])
+
 # ───────────────────────────────────────────────────────────
 # model-training utility
 # ───────────────────────────────────────────────────────────
-def train_model(model, data):
+def train_model(model, data, model_name, dataset_name):
+    st.markdown(f"---")
+    st.markdown(f"## Results for Model: {model_name} — Dataset: {dataset_name}")
+    st.markdown(f"---")
+
     X = data.drop(columns=["Class"])
     y = data["Class"]
 
-    st.markdown(f"### Model: {model.__class__.__name__}")
     kf = KFold(n_splits=3, shuffle=True, random_state=42)
 
     accs, bal_accs, precs, recs, f1s, all_true, all_pred = ([] for _ in range(7))
@@ -181,13 +206,15 @@ def train_model(model, data):
         model.fit(X.iloc[tr_idx], y.iloc[tr_idx])
         preds = model.predict(X.iloc[te_idx])
 
-        all_true.extend(y.iloc[te_idx]); all_pred.extend(preds)
+        all_true.extend(y.iloc[te_idx])
+        all_pred.extend(preds)
         accs.append(accuracy_score(y.iloc[te_idx], preds))
         bal_accs.append(balanced_accuracy_score(y.iloc[te_idx], preds))
         precs.append(precision_score(y.iloc[te_idx], preds, average="weighted"))
         recs.append(recall_score(y.iloc[te_idx], preds, average="weighted"))
         f1s.append(f1_score(y.iloc[te_idx], preds, average="weighted"))
 
+    st.subheader(f"Performance Metrics — {model_name} ({dataset_name})")
     st.write({
         "Accuracy": f"{np.mean(accs):.3f}",
         "Balanced Accuracy": f"{np.mean(bal_accs):.3f}",
@@ -197,46 +224,42 @@ def train_model(model, data):
     })
 
     # Confusion matrix
-    st.subheader("Confusion Matrix")
+    st.subheader(f"Confusion Matrix — {model_name} ({dataset_name})")
     cm = confusion_matrix(all_true, all_pred, labels=np.unique(y))
     fig_cm, ax_cm = plt.subplots(figsize=(6, 5))
-    ConfusionMatrixDisplay(confusion_matrix=cm,
-                           display_labels=np.unique(y)
-                          ).plot(ax=ax_cm, cmap="Blues", xticks_rotation=45)
+    ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=np.unique(y)).plot(
+        ax=ax_cm, cmap="Blues", xticks_rotation=45)
     st.pyplot(fig_cm)
 
     # Classification report
-    st.subheader("Classification Report")
+    st.subheader(f"Classification Report — {model_name} ({dataset_name})")
     st.text(classification_report(all_true, all_pred))
 
     # SHAP feature importance
-    st.subheader("SHAP Feature Importance")
+    st.subheader(f"SHAP Feature Importance — {model_name} ({dataset_name})")
     model.fit(X, y)
     try:
         explainer = shap.Explainer(model, X)
-    except Exception:
-        explainer = shap.KernelExplainer(model.predict_proba,
-                                         shap.sample(X, 100, random_state=42))
-    shap_values = explainer(X)
-    shap.summary_plot(
-        shap_values, features=X, feature_names=X.columns,
-        class_names=np.unique(y), plot_type="bar",
-        max_display=20, show=False
-    )
-    st.pyplot(plt.gcf(), clear_figure=True)
+        shap_values = explainer(X)
+        shap.summary_plot(
+            shap_values, features=X, feature_names=X.columns,
+            class_names=np.unique(y), plot_type="bar",
+            max_display=20, show=False
+        )
+        st.pyplot(plt.gcf(), clear_figure=True)
+    except Exception as e:
+        st.warning(f"SHAP skipped: {e}")
 
     # Label-shuffling sanity test
-    st.markdown("#### Label-Shuffling Sanity Test")
+    st.markdown(f"#### Label-Shuffling Sanity Test — {model_name} ({dataset_name})")
     y_shuf = y.sample(frac=1.0, random_state=42).reset_index(drop=True)
     shuf_accs = []
     for tr_idx, te_idx in kf.split(X):
-        clone(model).fit(X.iloc[tr_idx], y_shuf.iloc[tr_idx])
-        shuf_accs.append(
-            accuracy_score(
-                y_shuf.iloc[te_idx],
-                model.predict(X.iloc[te_idx])
-            )
-        )
+        model_shuf = clone(model)
+        model_shuf.fit(X.iloc[tr_idx], y_shuf.iloc[tr_idx])
+        preds_shuf = model_shuf.predict(X.iloc[te_idx])
+        shuf_accs.append(accuracy_score(y_shuf.iloc[te_idx], preds_shuf))
+
     st.write(
         f"Chance ≈ {1 / y.nunique():.3f} — "
         f"shuffled-label accuracy: {np.mean(shuf_accs):.3f} ± {np.std(shuf_accs):.3f}"
@@ -247,11 +270,12 @@ def train_model(model, data):
 # ───────────────────────────────────────────────────────────
 for dataset, tag in [
     (df, "Original"),
-    (df_filt, "Filtered"),
-    (dmap_df, "UMAP"),
-    (df_topk, "Top-350"),
+    (df_filt, "Threshold-Filtered"),
+    (df_filt_log, "Threshold-Filtered (log-scaled)"),
+    (dmap_df, "Filtered-UMAP"),
+    (df_topk, "Selection-Top-350"),
+    (df_topk_log, "Selection-Top-350 (log-scaled)")
 ]:
-    st.markdown(f"## Training on {tag} data")
-    train_model(DecisionTreeClassifier(), dataset)
-    train_model(RandomForestClassifier(), dataset)
-    train_model(LinearSVC(max_iter=10_000, dual=False), dataset)
+    train_model(DecisionTreeClassifier(), dataset, "Decision Tree", tag)
+    train_model(RandomForestClassifier(), dataset, "Random Forest", tag)
+    train_model(SGDClassifier(loss="log_loss", penalty="l2", max_iter=1000), dataset, "SGD Classifier", tag)
