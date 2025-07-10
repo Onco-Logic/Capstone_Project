@@ -19,7 +19,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
 
 # === sentiment analysis
-nltk.download('vader_lexicon')
+# nltk.download('vader_lexicon')
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 
 # === entity extraction
@@ -32,8 +32,8 @@ from sklearn.decomposition import TruncatedSVD            # <<< ADDED
 # === added for UMAP visualization
 import umap.umap_ as umap                                # <<< ADDED
 
-st.set_page_config(page_title='Text Data EDA', layout='wide')
-st.title('Exploratory Data Analysis for Text Reports')
+st.set_page_config(page_title='Text Data EDA')
+st.title('EDA & PCA for NLP in Cancer')
 
 @st.cache_data
 def load_data():
@@ -58,7 +58,7 @@ st.write(df[['char_count', 'word_count']].describe())
 
 # Word count distribution
 st.subheader('Distribution of Word Counts')
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(6, 4))
 ax.hist(df['word_count'], bins=30)
 ax.set_xlabel('Word Count')
 ax.set_ylabel('Frequency')
@@ -72,7 +72,7 @@ common = pd.DataFrame(Counter(all_words).most_common(20), columns=['word', 'coun
 st.dataframe(common)
 
 # stop-word removal
-nltk.download('stopwords')
+# nltk.download('stopwords')
 stop_words = set(stopwords.words('english'))
 clean_words = [w for w in all_words if w.isalpha() and w not in stop_words]
 st.subheader('Top 20 Words After Stop-word Removal')
@@ -98,35 +98,35 @@ tfidf_df = pd.DataFrame({
 st.dataframe(tfidf_df)
 
 # Topic modeling
-# st.subheader('Latent Topics (LDA)')
-# count_vect = CountVectorizer(stop_words='english')
-# count_mat = count_vect.fit_transform(df['text'])
-# lda = LatentDirichletAllocation(n_components=5, random_state=0)
-# lda.fit(count_mat)
-# terms = count_vect.get_feature_names_out()
-# topics = []
-# for comp in lda.components_:
-#     topics.append(' '.join([terms[i] for i in comp.argsort()[-10:][::-1]]))
-# st.dataframe(pd.DataFrame({'Topic': [f'Topic {i+1}' for i in range(5)], 'Keywords': topics}))
+st.subheader('Latent Topics (LDA)')
+count_vect = CountVectorizer(stop_words='english')
+count_mat = count_vect.fit_transform(df['text'])
+lda = LatentDirichletAllocation(n_components=5, random_state=0)
+lda.fit(count_mat)
+terms = count_vect.get_feature_names_out()
+topics = []
+for comp in lda.components_:
+    topics.append(' '.join([terms[i] for i in comp.argsort()[-10:][::-1]]))
+st.dataframe(pd.DataFrame({'Topic': [f'Topic {i+1}' for i in range(5)], 'Keywords': topics}))
 
 # Sentiment analysis
-# st.subheader('Sentiment Distribution')
-# sia = SentimentIntensityAnalyzer()
-# df['sentiment'] = df['text'].apply(lambda x: sia.polarity_scores(str(x))['compound'])
-# fig2, ax2 = plt.subplots()
-# ax2.hist(df['sentiment'], bins=30)
-# ax2.set_xlabel('Compound Sentiment Score')
-# ax2.set_ylabel('Frequency')
-# ax2.set_title('Sentiment Scores')
-# st.pyplot(fig2)
-# st.write(df['sentiment'].describe())
+st.subheader('Sentiment Distribution')
+sia = SentimentIntensityAnalyzer()
+df['sentiment'] = df['text'].apply(lambda x: sia.polarity_scores(str(x))['compound'])
+fig2, ax2 = plt.subplots(figsize=(6, 4))
+ax2.hist(df['sentiment'], bins=30)
+ax2.set_xlabel('Compound Sentiment Score')
+ax2.set_ylabel('Frequency')
+ax2.set_title('Sentiment Scores')
+st.pyplot(fig2)
+st.write(df['sentiment'].describe())
 
 # Entity extraction
-# st.subheader('Top 20 Named Entities')
-# nlp = spacy.load("en_core_web_sm")
-# ents = [ent.text for doc in nlp.pipe(df['text'].astype(str), batch_size=50) for ent in doc.ents]
-# ent_df = pd.DataFrame(Counter(ents).most_common(20), columns=['entity','count'])
-# st.dataframe(ent_df)
+st.subheader('Top 20 Named Entities')
+nlp = spacy.load("en_core_web_sm")
+ents = [ent.text for doc in nlp.pipe(df['text'].astype(str), batch_size=50) for ent in doc.ents]
+ent_df = pd.DataFrame(Counter(ents).most_common(20), columns=['entity','count'])
+st.dataframe(ent_df)
 
 # === added document clustering
 st.subheader('Document Clustering (TF–IDF + SVD + KMeans)')
@@ -140,7 +140,7 @@ svd = TruncatedSVD(n_components=2, random_state=0)       # <<< ADDED
 coords_svd = svd.fit_transform(tfidf)                        # <<< ADDED
 
 # 3. Scatter plot of clusters
-fig3, ax3 = plt.subplots()                               # <<< ADDED
+fig3, ax3 = plt.subplots(figsize=(6, 4))                               # <<< ADDED
 for label in range(n_clusters):                         # <<< CHANGED: loop per cluster
     idx = clusters == label
     ax3.scatter(
@@ -164,7 +164,7 @@ st.subheader('Document Clustering (UMAP)')
 umap_model = umap.UMAP(n_components=2, random_state=0)
 umap_coords = umap_model.fit_transform(tfidf.toarray())
 
-fig4, ax4 = plt.subplots()
+fig4, ax4 = plt.subplots(figsize=(6, 4))
 for label in range(n_clusters):                         # <<< CHANGED: loop per cluster
     idx = clusters == label
     ax4.scatter(
