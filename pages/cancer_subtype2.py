@@ -91,7 +91,7 @@ st.subheader("Basic Exploratory Data Analysis")
 st.write("Features:", df_x.head())
 st.write("Labels:", df_y.head())
 
-df = pd.merge(df_x, df_y).drop(df_x.columns[0], axis=1)  # drop sample-ID col
+df = pd.merge(df_x, df_y).drop(df_x.columns[0], axis=1)
 st.write("Merged shape:", df.shape)
 
 class_counts = df["Class"].value_counts()
@@ -102,6 +102,20 @@ fig_cls, ax_cls = plt.subplots(figsize=(6, 4))
 sns.barplot(x=class_counts.index, y=class_counts.values, ax=ax_cls)
 ax_cls.set_title("Class distribution")
 st.pyplot(fig_cls)
+
+# feature variance
+features = df.drop(columns='Class')
+variances = features.var()
+
+st.write("Summary of Feature Variances:")
+st.write(variances.describe())
+
+st.write("Distribution of Gene Variances")
+plt.figure(figsize=(8, 4))
+sns.histplot(variances, bins=100, kde=True)
+plt.xlabel("Variance")
+plt.ylabel("Number of Genes")
+st.pyplot(plt)
 
 # ───────────────────────────────────────────────────────────
 # 1) PCA on full feature space
