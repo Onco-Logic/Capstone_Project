@@ -67,7 +67,8 @@ def plot_step(name, X_2d, cluster_labels, X_full, true_labels):
         label_codes, class_names = pd.factorize(true_labels)
         fig_t, ax_t = plt.subplots(figsize=(5, 4))
         sc = ax_t.scatter(X_2d[:, 0], X_2d[:, 1],
-                          c=label_codes, cmap="tab10", alpha=0.6)
+            c=label_codes, cmap="tab10", alpha=0.6
+        )
         ax_t.set_xlabel("Component 1"); ax_t.set_ylabel("Component 2")
         handles = [
             Line2D([0], [0], marker='o', color='w',
