@@ -42,6 +42,80 @@ st.markdown("---")
 file_path = 'Data/Breast_Cancer.csv'
 data = pd.read_csv(file_path)
 
+############################################# Data Exploration #############################################
+
+st.subheader("Data Exploration")
+st.markdown("---")
+
+# Preview of the raw dataset
+st.subheader("Preview of Dataset")
+st.dataframe(data.head())
+
+# Shape of the dataset
+st.subheader("Shape of Dataset")
+st.write(f"Rows: {data.shape[0]}, Columns: {data.shape[1]}")
+
+# Summary statistics and null/unique counts
+def create_summary(df):
+    return pd.DataFrame({
+        "Null Count": df.isna().sum(),
+        "Unique": df.nunique(),
+        "Dtype": df.dtypes.astype(str)
+    })
+summary_df = create_summary(data)
+st.subheader("Summary of Dataset")
+st.dataframe(summary_df, use_container_width=True)
+
+# Statistical description
+st.subheader("Dataset Statistical Information")
+st.dataframe(data.describe(), use_container_width=True)
+
+# Distribution plots
+st.subheader("Data Distribution by Column")
+def plot_distribution(df, col):
+    fig, ax = plt.subplots()
+    sns.histplot(data=df, x=col, ax=ax)
+    ax.set_title(f"Distribution of {col}")
+    st.pyplot(fig)
+selected_col = st.selectbox("Select a column to plot", data.columns)
+plot_distribution(data, selected_col)
+
+# Survival months by selected category
+st.subheader("Survival Months by Category")
+def plot_survival_by_category(df, cat):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.countplot(data=df, x=cat, hue=df['Survival Months'] // 12, palette='muted', ax=ax)
+    ax.set_title(f"{cat} by Survival Years")
+    st.pyplot(fig)
+cat_cols = data.columns.drop('Survival Months')
+sel_cat = st.selectbox("Select a category to plot Survival Months", cat_cols)
+plot_survival_by_category(data, sel_cat)
+
+# Status by selected category
+st.subheader("Status by Category")
+def plot_status_by_category(df, cat):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.countplot(data=df, x=cat, hue='Status', palette='muted', ax=ax)
+    ax.set_title(f"{cat} by Status")
+    st.pyplot(fig)
+status_cols = data.columns.drop('Status')
+sel_status_cat = st.selectbox("Select a category to plot Status", status_cols)
+plot_status_by_category(data, sel_status_cat)
+
+# Survival months distribution
+st.subheader("Survival Months Distribution")
+fig, ax = plt.subplots()
+sns.histplot(data=data, x='Survival Months', hue=data['Survival Months'] // 12, palette='muted', ax=ax)
+ax.set_title("Survival Months Distribution")
+st.pyplot(fig)
+
+# Status distribution
+st.subheader("Status Distribution")
+fig, ax = plt.subplots()
+sns.countplot(data=data, x='Status', hue='Status', palette='muted', ax=ax)
+ax.set_title("Status Distribution")
+st.pyplot(fig)
+
 ############################################# Data Preprocessing #############################################
 
 st.markdown("---")
@@ -129,7 +203,7 @@ X1_train, X1_test, y1_train, y1_test = train_test_split(X1_resampled, y1_resampl
 
 ####################################### Train Random Forest #######################################
 
-st.subheader("Random Forest Classifier (Tuned for Survival Class)")
+st.subheader("Random Forest Classifier (Oversampled Survival Pipeline)")
 
 modelRFC_sm = RandomForestClassifier(random_state=42)
 modelRFC_sm.fit(X1_train, y1_train)
@@ -295,9 +369,10 @@ conf_mat_xgb_cln = confusion_matrix(y1_test_cln, y1_pred_xgb_cln)
 fig, ax = plt.subplots(figsize=(8, 6))
 sns.heatmap(
     pd.DataFrame(conf_mat_xgb_cln,
-                 columns=[f"Pred {name}" for name in class_names],
-                 index=[f"Actual {name}" for name in class_names]),
-    annot=True, cmap="Blues", fmt="d", ax=ax)
+        columns=[f"Pred {name}" for name in class_names],
+        index=[f"Actual {name}" for name in class_names]),
+        annot=True, cmap="Blues", fmt="d", ax=ax
+    )
 ax.set_title("After ENN Cleaning: XGBoost Survival Class Confusion Matrix")
 ax.set_xlabel("Predicted labels")
 ax.set_ylabel("True labels")
