@@ -103,59 +103,6 @@ st.dataframe(y1.head())
 
 ##################################################################################
 
-
-''' Testing different strategies for oversampling, uncomment to use each one individually '''
-
-"""SMOTETomek"""
-# original_counts = Counter(y1) 
-# desired_sampling_strategy_smotetomek = {
-#     0: 300, # Example: target for smallest minority
-#     1: 300,
-#     2: 300,
-#     3: 300
-# }
-# smote_tomek = SMOTETomek(random_state=42, sampling_strategy=desired_sampling_strategy_smotetomek)
-# X1_resampled, y1_resampled = smote_tomek.fit_resample(X1, y1)
-# st.write(f"Resampled dataset shape after SMOTETomek: {Counter(y1_resampled)}")
-
-'''SMOTEENN with modified parameters'''
-# st.write(f"Original dataset shape: {Counter(y1)}")
-# original_counts = Counter(y1) 
-# desired_sampling_strategy = {
-#     0: 300,
-#     1: 300,
-#     2: 300,
-#     3: 300
-# }
-# custom_enn = EditedNearestNeighbours(sampling_strategy='all', n_neighbors=3, kind_sel='mode')
-# smote_enn = SMOTEENN(
-#     random_state=42,
-#     sampling_strategy=desired_sampling_strategy,
-#     enn=custom_enn
-# )
-# X1_resampled, y1_resampled = smote_enn.fit_resample(X1, y1)
-# st.write(f"Resampled dataset shape after SMOTEENN: {Counter(y1_resampled)}")
-
-'''SMOTEENN with default parameters'''
-# st.write(f"Original dataset shape: {Counter(y1)}")
-# smote_enn = SMOTEENN(random_state=42)
-# X1_resampled, y1_resampled = smote_enn.fit_resample(X1, y1)
-# st.write(f"Resampled dataset shape after SMOTEENN: {Counter(y1_resampled)}")
-
-'''Random Over-Sampling'''
-# RandomSample_survival = RandomOverSampler(random_state=42)
-# X1_resampled, y1_resampled = RandomSample_survival.fit_resample(X1, y1)
-
-'''SMOTE'''
-# smote = SMOTE(random_state=42)
-# X1_resampled, y1_resampled = smote.fit_resample(X1, y1)
-
-'''KMeansSMOTE'''
-# st.write(f"Original dataset shape: {Counter(y1)}")
-# kmeans_smote = KMeansSMOTE(random_state=42, k_neighbors=2, cluster_balance_threshold=0.001, n_jobs=-1) 
-# X1_resampled, y1_resampled = kmeans_smote.fit_resample(X1, y1)
-# st.write(f"Resampled dataset shape after KMeansSMOTE: {Counter(y1_resampled)}")
-
 '''RandomOverSampler with modified parameters - This approach shows promise'''
 st.write(f"Original dataset shape: {Counter(y1)}")
 original_counts = Counter(y1) 
@@ -324,3 +271,41 @@ ax.set_title("After ENN Cleaning: RF Survival Class Confusion Matrix")
 ax.set_xlabel("Predicted labels")
 ax.set_ylabel("True labels")
 st.pyplot(fig)
+
+# ------------------- XGBoost on ENN-cleaned -------------------
+modelXGB_cln = XGBClassifier(random_state=42, eval_metric='logloss')
+modelXGB_cln.fit(X1_train_cln, y1_train_cln)
+y1_pred_xgb_cln = modelXGB_cln.predict(X1_test_cln)
+
+acc_xgb_cln = accuracy_score(y1_test_cln, y1_pred_xgb_cln)
+bal_acc_xgb_cln = balanced_accuracy_score(y1_test_cln, y1_pred_xgb_cln)
+prec_xgb_cln = precision_score(y1_test_cln, y1_pred_xgb_cln, average='weighted', zero_division=0)
+recall_xgb_cln = recall_score(y1_test_cln, y1_pred_xgb_cln, average='weighted', zero_division=0)
+f1_xgb_cln = f1_score(y1_test_cln, y1_pred_xgb_cln, average='weighted', zero_division=0)
+
+st.write("### After ENN Cleaning → XGBoost Metrics")
+st.write(f"Accuracy: {acc_xgb_cln:.3f}")
+st.write(f"Balanced Accuracy: {bal_acc_xgb_cln:.3f}")
+st.write(f"Precision (Weighted): {prec_xgb_cln:.3f}")
+st.write(f"Recall (Weighted): {recall_xgb_cln:.3f}")
+st.write(f"F1 Score (Weighted): {f1_xgb_cln:.3f}")
+
+# Confusion matrix XGBoost
+conf_mat_xgb_cln = confusion_matrix(y1_test_cln, y1_pred_xgb_cln)
+fig, ax = plt.subplots(figsize=(8, 6))
+sns.heatmap(
+    pd.DataFrame(conf_mat_xgb_cln,
+                 columns=[f"Pred {name}" for name in class_names],
+                 index=[f"Actual {name}" for name in class_names]),
+    annot=True, cmap="Blues", fmt="d", ax=ax)
+ax.set_title("After ENN Cleaning: XGBoost Survival Class Confusion Matrix")
+ax.set_xlabel("Predicted labels")
+ax.set_ylabel("True labels")
+st.pyplot(fig)
+
+# Optional: Full classification report
+st.write("Classification Report: XGBoost after ENN Cleaning")
+report_xgb_cln = classification_report(
+    y1_test_cln, y1_pred_xgb_cln, target_names=class_names, output_dict=True, zero_division=0
+)
+st.table(pd.DataFrame(report_xgb_cln).transpose().round(2))
