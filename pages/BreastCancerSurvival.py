@@ -139,66 +139,113 @@ def trainModel():
 
     st.write(f"Accuracy: {acc_cln:.3f}")
 
-    ### >>> ADDED: store session state for interactive prediction
+    ### Store session state for interactive prediction
     st.session_state["clf"] = modelRFC_cln
     st.session_state["feature_cols"] = list(X1.columns)
     st.session_state["encoders"] = encoders
     st.session_state["class_names"] = class_names
     st.session_state["raw_data"] = data
     st.session_state["encoded_data"] = pdataS
-    ### <<< END ADDED
+    # keep cleaned test set around for sampling
+    st.session_state["X_test"] = X1_test_cln.reset_index(drop=True)
+    st.session_state["y_test"] = y1_test_cln.reset_index(drop=True)
+    # also save the training split
+    st.session_state["X_train"] = X1_train_cln.reset_index(drop=True)
+    st.session_state["y_train"] = y1_train_cln.reset_index(drop=True)
 
-    ### >>> ADDED: Interactive Risk Predictor
+
+    ### Interactive Risk Predictor
     st.markdown("---")
     st.subheader("🔮 Interactive: Predicted Risk Level")
 
-    if "clf" in st.session_state:
-        clf = st.session_state["clf"]
-        feature_cols = st.session_state["feature_cols"]
-        encs = st.session_state["encoders"]
-        raw = st.session_state["raw_data"]
-        encoded = st.session_state["encoded_data"]
+    clf = st.session_state["clf"]
+    feature_cols = st.session_state["feature_cols"]
+    encs = st.session_state["encoders"]
+    raw = st.session_state["raw_data"]
+    encoded = st.session_state["encoded_data"]
 
-        def class_to_risk(pred_class):
-            if pred_class <= 2:
-                return "HIGH"
-            elif 3 <= pred_class <= 5:
-                return "MEDIUM"
+    # 1) Load a random sample BEFORE building the form
+    if st.button("🔃 Load Random Sample"):
+        # draw a random index
+        idx = np.random.randint(len(st.session_state["X_test"]))
+        sample = st.session_state["X_test"].iloc[idx]
+        # decode & store into session_state
+        for col in feature_cols:
+            if col in encs:
+                st.session_state[col] = encs[col].inverse_transform([int(sample[col])])[0]
             else:
-                return "LOW"
+                st.session_state[col] = float(sample[col])
+        # display the index
+        st.success(f"🔍 Loaded random patient at index **{idx}**. Now click ▶️ Predict Risk Level.")
 
-        with st.form("risk_form"):
-            st.write("Enter patient characteristics:")
-            user_inputs = {}
-            for col in feature_cols:
-                if col in encs:
-                    options = list(encs[col].classes_)
-                    default_val = raw[col].mode().iloc[0] if not raw[col].mode().empty else options[0]
-                    val = st.selectbox(col, options, index=options.index(default_val))
-                    user_inputs[col] = encs[col].transform([val])[0]
-                else:
-                    cmin = float(encoded[col].min())
-                    cmax = float(encoded[col].max())
-                    cmed = float(encoded[col].median())
-                    user_inputs[col] = st.number_input(col, min_value=cmin, max_value=cmax, value=cmed)
 
-            submitted = st.form_submit_button("Predict Risk Level")
-
-        if submitted:
-            X_new = pd.DataFrame([user_inputs])[feature_cols]
-            pred_class = clf.predict(X_new)[0]
-            risk_level = class_to_risk(pred_class)
-
-            st.write("### Prediction Result")
-            if risk_level == "HIGH":
-                st.error(f"🟥 High Risk (Predicted Survival: < 3 years)")
-            elif risk_level == "MEDIUM":
-                st.warning(f"🟧 Medium Risk (Predicted Survival: 3–6 years)")
+    # 2) Now build the form, using session_state[col] as your defaults
+    with st.form("risk_form"):
+        st.write("Enter patient characteristics:")
+        for col in feature_cols:
+            if col in encs:
+                opts = list(encs[col].classes_)
+                default = st.session_state.get(col, raw[col].mode().iloc[0])
+                st.selectbox(col, opts, index=opts.index(default), key=col)
             else:
-                st.success(f"🟩 Low Risk (Predicted Survival: > 6 years)")
+                cmin, cmax = float(encoded[col].min()), float(encoded[col].max())
+                cmed = float(encoded[col].median())
+                default = st.session_state.get(col, cmed)
+                st.number_input(col, min_value=cmin, max_value=cmax, value=default, key=col)
 
-            st.caption(f"Predicted class index: {pred_class}")
-    ### <<< END ADDED
+        do_predict = st.form_submit_button("▶️ Predict Risk Level")
+
+    # 3) Prediction logic
+    if do_predict:
+        user_inputs = {}
+        for col in feature_cols:
+            if col in encs:
+                user_inputs[col] = encs[col].transform([st.session_state[col]])[0]
+            else:
+                user_inputs[col] = st.session_state[col]
+
+        X_new = pd.DataFrame([user_inputs])[feature_cols]
+        pred = clf.predict(X_new)[0]
+        risk = "HIGH" if pred <= 2 else "MEDIUM" if pred <= 5 else "LOW"
+
+        st.write("### Prediction Result")
+        if risk == "HIGH":
+            st.error("🟥 High Risk (< 3 years)")
+        elif risk == "MEDIUM":
+            st.warning("🟧 Medium Risk (3–6 years)")
+        else:
+            st.success("🟩 Low Risk (> 6 years)")
+        st.caption(f"Predicted class index: {pred}")
+
+    st.markdown("---")
+    st.subheader("📊 Dataset Sizes")
+
+    train_size = len(st.session_state["X_train"])
+    test_size  = len(st.session_state["X_test"])
+
+    st.write(f"**Training set size:** {train_size} samples")
+    st.write(f"**Testing set size:** {test_size} samples")
+
+    ### Display the full testing‐set pool
+    st.markdown("---")
+    st.subheader("🗂️ Testing Set Pool")
+
+    if st.checkbox("Show testing set pool"):
+        # 1) grab encoded feature matrix + true labels
+        df_pool = st.session_state["X_test"].copy()
+        df_pool["Actual Survival Class"] = st.session_state["y_test"].values
+        # map numeric class → human name
+        class_names = st.session_state["class_names"]
+        df_pool["Class Name"] = df_pool["Actual Survival Class"].map(lambda i: class_names[i])
+
+        # 2) decode each encoded categorical column
+        for col, le in st.session_state["encoders"].items():
+            df_pool[col] = le.inverse_transform(df_pool[col].astype(int))
+
+        # 3) show the decoded pool
+        st.dataframe(df_pool)    
+
+    ### 
 ############################################# Data Exploration #############################################
 
 def dataExploration():
