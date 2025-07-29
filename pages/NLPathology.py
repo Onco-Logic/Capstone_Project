@@ -61,7 +61,7 @@ def get_cancer_type():
 @st.cache_resource
 def load_cancer_model():
     try:
-        model_path = "models/answerdotai"
+        model_path = "models/cancer_classifier"
         
         class_to_cancer = get_cancer_type()
 
