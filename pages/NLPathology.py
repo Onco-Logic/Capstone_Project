@@ -478,7 +478,7 @@ def interactive_report_processing():
                 col1.metric(
                     "Cancer Type",
                     cancer_type_val,
-                    delta=f"Confidnece: {cancer_type_conf:.2f}",
+                    delta=f"Confidence: {cancer_type_conf:.2f}",
                     delta_color="normal"
                 )
 
@@ -500,17 +500,17 @@ def interactive_report_processing():
                 df_tnm = pd.DataFrame(tnm_data)
                 st.dataframe(df_tnm, use_container_width=True)
 
-                
+                # Summary
+                st.markdown("### Summary")
 
-                    features_data.append({
-                        "Feature": feature_key.replace('_', ' ').title(),
-                        "Value": display_value,
-                        "Confidence": display_confidence,
-                        "Status": status
-                    })
-                st.dataframe(pd.DataFrame(features_data))
+                st.success(
+                    f"""
+                    **Cancer Type Prediction**: {cancer_type_val} ({cancer_type_conf:.1%} confidence)
+                    
+                    **TNM Staging**: T{generated_report['tnm_staging']['t_stage']['value']}, N{generated_report['tnm_staging']['n_stage']['value']}, M{generated_report['tnm_staging']['m_stage']['value']}
 
-                st.success(f"Overall Report Status: {generated_report['report_status']}")
+                    st.success(f"Overall Report Status: {generated_report['report_status']}")
+                    """)
 
                 with st.expander("Show Raw JSON Output"):
                     st.json(generated_report)
