@@ -192,7 +192,7 @@ def run_clinicalbert_inference(report_text):
         return {
             "cancer_type": {
                 "value": class_to_cancer.get(predicted_class, "Unknown"),
-                "confidence": round(confidence, 2)
+                "confidence": round(confidence, 3)
             },
             "tnm_staging": {
                 "m_stage": m_stage,
@@ -508,8 +508,6 @@ def interactive_report_processing():
                     **Cancer Type Prediction**: {cancer_type_val} ({cancer_type_conf:.1%} confidence)
                     
                     **TNM Staging**: T{generated_report['tnm_staging']['t_stage']['value']}, N{generated_report['tnm_staging']['n_stage']['value']}, M{generated_report['tnm_staging']['m_stage']['value']}
-
-                    st.success(f"Overall Report Status: {generated_report['report_status']}")
                     """)
 
                 with st.expander("Show Raw JSON Output"):
