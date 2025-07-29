@@ -49,7 +49,7 @@ def get_cancer_type():
         class_to_cancer = {i: cancer_type for i, cancer_type in enumerate(cancer_types)}
 
         # DEBUG. Disable when complete.
-        st.info(f"Found {len(cancer_types)} unique cancer types: {cancer_types}")
+        # st.info(f"Found {len(cancer_types)} unique cancer types: {cancer_types}")
 
         return class_to_cancer
     except Exception as e:
@@ -468,50 +468,39 @@ def interactive_report_processing():
                 if generated_report is None:
                     return
 
-                st.markdown("### Patient Summary")
+                st.markdown("Patient Summary")
+
                 col1, col2 = st.columns(2)
-                col1.metric("Patient ID", generated_report['patient_id'])
                 
                 cancer_type_val = generated_report['cancer_type']['value']
                 cancer_type_conf = generated_report['cancer_type'].get('confidence')
                 
-                if cancer_type_status != "Assessed":
-                    col2.metric("Cancer Type", cancer_type_val, delta=cancer_type_status, delta_color="off")
-                else:
-                    col2.metric("Cancer Type", cancer_type_val, f"Confidence: {cancer_type_conf:.2f}")
+                col1.metric(
+                    "Cancer Type",
+                    cancer_type_val,
+                    delta=f"Confidnece: {cancer_type_conf:.2f}",
+                    delta_color="normal"
+                )
 
                 st.markdown("### TNM Staging")
                 tnm_data = []
+                staging_mapping = {
+                    't_stage': 'T Stage (Tumor)',
+                    'n_stage': 'N Stage (Nodes)', 
+                    'm_stage': 'M Stage (Metastasis)'
+                }
+                
                 for stage_key, stage_info in generated_report['tnm_staging'].items():
-                    value = stage_info['value']
-                    confidence = stage_info.get('confidence')
-                    status = stage_info['status']
-                    display_confidence = f"{confidence:.2f}" if confidence is not None else "N/A"
-                    
                     tnm_data.append({
-                        "Stage": stage_key.replace('_', ' ').title(),
-                        "Value": value,
-                        "Confidence": display_confidence,
-                        "Status": status
+                        "Stage Type": staging_mapping.get(stage_key, stage_key),
+                        "Value": stage_info['value'],
+                        "Confidence": f"{stage_info['confidence']:.1f}"
                     })
-                st.dataframe(pd.DataFrame(tnm_data))
+                
+                df_tnm = pd.DataFrame(tnm_data)
+                st.dataframe(df_tnm, use_container_width=True)
 
-                st.markdown("### Key Features Extracted")
-                features_data = []
-                for feature_key, feature_info in generated_report['key_features'].items():
-                    value = feature_info['value']
-                    confidence = feature_info.get('confidence')
-                    status = feature_info['status']
-                    unit = feature_info.get('unit', '')
-                    total_examined = feature_info.get('total_examined', '')
-
-                    display_value = str(value)
-                    if unit:
-                        display_value += f" {unit}"
-                    if total_examined:
-                        display_value += f" (of {total_examined})"
-                    
-                    display_confidence = f"{confidence:.2f}" if confidence is not None else "N/A"
+                
 
                     features_data.append({
                         "Feature": feature_key.replace('_', ' ').title(),
