@@ -198,7 +198,7 @@ def run_clinicalbert_inference(report_text):
         )
 
         device = torch.device("cuda" if torch.cuda_is_available() else "cpu")
-        inputs = {k: v.to(device) for k, v in inputs.items())}
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         cancer_model.to(device)
 
         with torch.no_grad():
@@ -207,16 +207,9 @@ def run_clinicalbert_inference(report_text):
             predicted_class = torch.argmax(predictions, dim=-1).item()
             confidence = predictions[0][predicted_class].item()
         
-        class_to_cancer = {}
+        # TODO: Make function that gets cancer subtypes from TCGA_patient_to_cancer_type.csv, then plug them into this bad boy --> class_to_cancer = {}
 
-    inputs = tokenizer(report_text, return_tensors="pt", truncation=True, padding=True, max_length=512)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-    base_clinicalbert_model.to(device)
-    with torch.no_grad():
-        outputs = base_clinicalbert_model(**inputs)
-    st.info("ClinicalBERT processed the text. Specific task predictions are simulated as the base model is not fine-tuned.")
-    return _dummy_inference_fallback(report_text)
+        # TODO: Just have M, N, and T models output 1 until I get trained models
 
 def plot_top_ngrams(text_series, n=2, top_k=20):
     """Calculates and plots the top K n-grams from a text series."""
