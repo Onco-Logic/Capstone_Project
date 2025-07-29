@@ -145,6 +145,10 @@ def run_clinicalbert_inference(report_text):
         st.error("Cancer classification model failed to load. Pls fix.")
         return None
 
+    if pd.isna(report_text) or not report_text.strip():
+        st.error("No text provided for analysis.")
+        return None
+
     try:
         def clean_text(text):
             if not isinstance(text, str):
@@ -167,7 +171,8 @@ def run_clinicalbert_inference(report_text):
             return_tensors='pt'
         )
 
-        device = torch.device("cuda" if torch.cuda_is_available() else "cpu")
+        # Run the inference
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         inputs = {k: v.to(device) for k, v in inputs.items()}
         cancer_model.to(device)
 
@@ -179,19 +184,16 @@ def run_clinicalbert_inference(report_text):
         
         class_to_cancer = get_cancer_type()
 
-        cancer_type = {
-            "value": class_to_cancer.get(predicted_class, "NULL"),
-            "confidence": round(confidence, 3),
-            "status": "ModernBERT"
-        }
-
         # TEMPORARY M, N, and T values
         m_stage = {"value": "1", "confidence": 1, "status": "DEBUG"}
         n_stage = {"value": "1", "confidence": 1, "status": "DEBUG"}
         t_stage = {"value": "1", "confidence": 1, "status": "DEBUG"}
 
         return {
-            "cancer_type": cancer_type,
+            "cancer_type": {
+                "value": class_to_cancer.get(predicted_class, "Unknown"),
+                "confidence": round(confidence, 2)
+            },
             "tnm_staging": {
                 "m_stage": m_stage,
                 "n_stage": n_stage,
@@ -461,10 +463,10 @@ def interactive_report_processing():
     if st.button("Generate Structured Report"):
         if processed_text:
             with st.spinner("Processing report..."):
-                st.subheader("Generated Report:")
-                patient_id_for_interactive = "USER-INPUT-001"
                 generated_report = run_clinicalbert_inference(processed_text)
-                generated_report["patient_id"] = patient_id_for_interactive
+
+                if generated_report is None:
+                    return
 
                 st.markdown("### Patient Summary")
                 col1, col2 = st.columns(2)
@@ -472,7 +474,6 @@ def interactive_report_processing():
                 
                 cancer_type_val = generated_report['cancer_type']['value']
                 cancer_type_conf = generated_report['cancer_type'].get('confidence')
-                cancer_type_status = generated_report['cancer_type']['status']
                 
                 if cancer_type_status != "Assessed":
                     col2.metric("Cancer Type", cancer_type_val, delta=cancer_type_status, delta_color="off")
