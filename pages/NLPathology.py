@@ -26,7 +26,24 @@ st.set_page_config(layout="wide", page_title="NLP Pipeline for Pathology Reports
 # Global variables for ClinicalBERT model and tokenizer
 tokenizer = None
 base_clinicalbert_model = None
-CLINICALBERT_BASE_MODEL_NAME = "emilyalsentzer/Bio_ClinicalBERT"
+
+# Sample use for debugging
+# CLINICALBERT_BASE_MODEL_NAME = "emilyalsentzer/Bio_ClinicalBERT"
+
+# Encoder LLM. Finetuned ModernBERT thing.
+@st.cache_resource
+def load_cancer_model():
+    try:
+        model_path = "models/answerdotai"
+        cancer_tokenizer = AutoTokenizer.from_pretrained(model_path)
+        cancer_model = AutoModelForSequenceClassification.from_pretrained(model_path)
+        cancer_model.eval()
+        return cancer_tokenizer, cancer_model, True
+    except Exception as e:
+        st.error(f"Error loading cancer model: {e}")
+        return None, None, False
+
+cancer_tokenizer, cancer_model, cancer_model_loaded = load_cancer_model()
 
 @st.cache_resource
 def load_clinicalbert_base_model_cached():
@@ -109,13 +126,12 @@ def preprocess_text_for_eda(text):
 
 # --- NLP INFERENCE & ANALYSIS LOGIC ---
 
+"""
 def _dummy_inference_fallback(report_text):
-    """Provides a dummy inference fallback for demonstration purposes."""
     common_cancer_types = ["BRCA", "LUAD", "COAD", "KIRC", "GBM"]
     common_t_stages = ["T1", "T1a", "T1b", "T2", "T2a", "T2b", "T3", "T4", "TX"]
     common_n_stages = ["N0", "N1", "N1a", "N1b", "N2", "N3", "NX"]
     common_m_stages = ["M0", "M1", "M1a", "M1b", "M1c", "MX"]
-    common_histologic_types = ["ductal carcinoma", "adenocarcinoma", "squamous cell carcinoma", "renal cell carcinoma", "glioma"]
 
     cancer_type = {"value": random.choice(common_cancer_types), "confidence": round(random.uniform(0.85, 0.99), 2), "status": "Assessed"}
     t_stage = {"value": random.choice(common_t_stages), "confidence": round(random.uniform(0.85, 0.99), 2), "status": "Assessed"}
@@ -145,8 +161,6 @@ def _dummy_inference_fallback(report_text):
         if unit == 'mm': value /= 10
         tumor_size = {"value": str(value), "unit": 'cm', "confidence": round(random.uniform(0.9, 0.99), 2), "status": "Extracted"}
 
-    # ... (other regex logic remains the same) ...
-
     return {
         "cancer_type": cancer_type, "tnm_staging": {"t_stage": t_stage, "n_stage": n_stage, "m_stage": m_stage},
         "key_features": {"tumor_size_cm": tumor_size, "histologic_type": histologic_type, "margins_status": margins_status,
@@ -154,13 +168,46 @@ def _dummy_inference_fallback(report_text):
                          "perineural_invasion": {"value": "Not Specified", "confidence": None, "status": "Not Specified"}, "positive_lymph_nodes_count": positive_lymph_nodes_count},
         "report_status": "Processed Successfully"
     }
+"""
 
 def run_clinicalbert_inference(report_text):
-    """Performs inference using ClinicalBERT or falls back to a dummy function."""
-    if not models_loaded_successfully:
-        return _dummy_inference_fallback(report_text)
-    if pd.isna(report_text) or not report_text.strip():
-        return _dummy_inference_fallback(report_text) # Fallback for empty text
+    if not cancer_model_loaded:
+        st.error("Cancer classification model failed to load. Pls fix.")
+        return None
+
+    try:
+        def clean_text(text):
+            if not isinstance(text, str):
+                return ""
+            text = text.lower()
+            text = re.sub(r'[^a-z0-9\s\.]', '', text)
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text
+
+        squeaky_clean_text = clean_text(report_text)
+
+        inputs = cancer_tokenizer(
+            squeaky_clean_text, 
+            add_special_tokens=True,
+            max_length=512,
+            return_token_type_ids=False,
+            padding='max_length',
+            truncation=True,
+            return_attention_mask=True,
+            return_tensors='pt'
+        )
+
+        device = torch.device("cuda" if torch.cuda_is_available() else "cpu")
+        inputs = {k: v.to(device) for k, v in inputs.items())}
+        cancer_model.to(device)
+
+        with torch.no_grad():
+            outputs = cancer_model(**inputs)
+            predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
+            predicted_class = torch.argmax(predictions, dim=-1).item()
+            confidence = predictions[0][predicted_class].item()
+        
+        class_to_cancer = {}
 
     inputs = tokenizer(report_text, return_tensors="pt", truncation=True, padding=True, max_length=512)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
