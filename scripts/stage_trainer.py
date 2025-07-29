@@ -23,7 +23,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 # ModernBERT base model path
-MODEL_NAME = os.path.join(os.path.dirname(__file__), "answerdotai")
+MODEL_NAME = "../Models/answerdotai"
 
 # Data file paths
 PATH_REPORTS = '../Data/TCGA_Reports.csv'
