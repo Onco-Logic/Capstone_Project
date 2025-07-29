@@ -6,6 +6,8 @@ import random
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import warnings
+import os
 
 # Core imports for ClinicalBERT
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -21,6 +23,10 @@ from spacy import displacy
 
 st.set_page_config(layout="wide", page_title="NLP Pipeline for Pathology Reports")
 
+# Annoying. Disable if something breaks.
+warnings.filterwarnings('ignore')
+os.environ['UMAP_DISABLE_NUMA_WARNINGS'] = '1'
+
 # --- MODEL LOADING ---
 
 # Global variables for ClinicalBERT model and tokenizer
@@ -30,34 +36,45 @@ base_clinicalbert_model = None
 # Sample use for debugging
 # CLINICALBERT_BASE_MODEL_NAME = "emilyalsentzer/Bio_ClinicalBERT"
 
+# Get cancer type list from TCGA_patient_to_cancer_type.csv, returns it as class_to_cancer
+@st.cache_data
+def get_cancer_type():
+    try:
+        df_cancer_types = pd.read_csv("Data/TCGA_patient_to_cancer_type.csv")
+        cancer_types = sorted(df_cancer_types['cancer_type'].unique())
+
+        # Because there are no pathology reports for LAML cancer. For reference, patient id with LAML cancer has prefix TCGA-AB.
+        cancer_types.remove('LAML')
+
+        class_to_cancer = {i: cancer_type for i, cancer_type in enumerate(cancer_types)}
+
+        # DEBUG. Disable when complete.
+        st.info(f"Found {len(cancer_types)} unique cancer types: {cancer_types}")
+
+        return class_to_cancer
+    except Exception as e:
+        st.error(f"Error in retrieving cancer types: {e}")
+        return
+
+
 # Encoder LLM. Finetuned ModernBERT thing.
 @st.cache_resource
 def load_cancer_model():
     try:
         model_path = "models/answerdotai"
+        
+        class_to_cancer = get_cancer_type()
+
         cancer_tokenizer = AutoTokenizer.from_pretrained(model_path)
-        cancer_model = AutoModelForSequenceClassification.from_pretrained(model_path)
+        cancer_model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=len(class_to_cancer))
         cancer_model.eval()
+
         return cancer_tokenizer, cancer_model, True
     except Exception as e:
         st.error(f"Error loading cancer model: {e}")
         return None, None, False
-
+    
 cancer_tokenizer, cancer_model, cancer_model_loaded = load_cancer_model()
-
-@st.cache_resource
-def load_clinicalbert_base_model_cached():
-    """Caches and loads the ClinicalBERT base model and tokenizer."""
-    try:
-        loaded_tokenizer = AutoTokenizer.from_pretrained(CLINICALBERT_BASE_MODEL_NAME)
-        loaded_model = AutoModelForSequenceClassification.from_pretrained(CLINICALBERT_BASE_MODEL_NAME)
-        loaded_model.eval()
-        st.success(f"Standard ClinicalBERT base model '{CLINICALBERT_BASE_MODEL_NAME}' and tokenizer loaded successfully!")
-        return loaded_tokenizer, loaded_model
-    except Exception as e:
-        st.error(f"Failed to load standard ClinicalBERT base model. Error: {e}")
-        st.info("Falling back to dummy inference for demonstration.")
-        return None, None
 
 @st.cache_resource
 def load_spacy_model_cached():
@@ -73,10 +90,7 @@ def load_spacy_model_cached():
         return None
 
 # Attempt to load models once at the start
-tokenizer, base_clinicalbert_model = load_clinicalbert_base_model_cached()
-models_loaded_successfully = (tokenizer is not None) and (base_clinicalbert_model is not None)
 nlp_spacy = load_spacy_model_cached()
-
 
 # --- DATA LOADING & PREPARATION ---
 
@@ -126,50 +140,6 @@ def preprocess_text_for_eda(text):
 
 # --- NLP INFERENCE & ANALYSIS LOGIC ---
 
-"""
-def _dummy_inference_fallback(report_text):
-    common_cancer_types = ["BRCA", "LUAD", "COAD", "KIRC", "GBM"]
-    common_t_stages = ["T1", "T1a", "T1b", "T2", "T2a", "T2b", "T3", "T4", "TX"]
-    common_n_stages = ["N0", "N1", "N1a", "N1b", "N2", "N3", "NX"]
-    common_m_stages = ["M0", "M1", "M1a", "M1b", "M1c", "MX"]
-
-    cancer_type = {"value": random.choice(common_cancer_types), "confidence": round(random.uniform(0.85, 0.99), 2), "status": "Assessed"}
-    t_stage = {"value": random.choice(common_t_stages), "confidence": round(random.uniform(0.85, 0.99), 2), "status": "Assessed"}
-    n_stage = {"value": random.choice(common_n_stages), "confidence": round(random.uniform(0.85, 0.99), 2), "status": "Assessed"}
-    m_stage = {"value": random.choice(common_m_stages), "confidence": round(random.uniform(0.85, 0.99), 2), "status": "Assessed"}
-
-    # Initialize features with default values
-    tumor_size = {"value": "Not Specified", "unit": None, "confidence": None, "status": "Not Specified"}
-    histologic_type = {"value": "Not Specified", "confidence": None, "status": "Not Specified"}
-    margins_status = {"value": "Not Specified", "confidence": None, "status": "Not Specified"}
-    angiolymphatic_invasion = {"value": "Not Specified", "confidence": None, "status": "Not Specified"}
-    positive_lymph_nodes_count = {"value": "Not Specified", "total_examined": None, "confidence": None, "status": "Not Specified"}
-
-    if pd.isna(report_text) or not report_text.strip():
-        # Return a structure indicating insufficient information
-        return {
-            "cancer_type": {"value": "Insufficient Info", "confidence": None, "status": "Insufficient Info"},
-            "tnm_staging": {k: {"value": "Insufficient Info", "confidence": None, "status": "Insufficient Info"} for k in ["t_stage", "n_stage", "m_stage"]},
-            "key_features": {k: {"value": "Not Specified", "confidence": None, "status": "Not Specified"} for k in ["tumor_size_cm", "histologic_type", "margins_status", "angiolymphatic_invasion", "venous_invasion", "perineural_invasion", "positive_lymph_nodes_count"]},
-            "report_status": "Insufficient Information in Text"
-        }
-
-    # Simplified regex extraction logic
-    size_match = re.search(r'tumor size.*?(\d+\.?\d*)\s*(cm|mm)', report_text, re.IGNORECASE)
-    if size_match:
-        value, unit = float(size_match.group(1)), size_match.group(2).lower()
-        if unit == 'mm': value /= 10
-        tumor_size = {"value": str(value), "unit": 'cm', "confidence": round(random.uniform(0.9, 0.99), 2), "status": "Extracted"}
-
-    return {
-        "cancer_type": cancer_type, "tnm_staging": {"t_stage": t_stage, "n_stage": n_stage, "m_stage": m_stage},
-        "key_features": {"tumor_size_cm": tumor_size, "histologic_type": histologic_type, "margins_status": margins_status,
-                         "angiolymphatic_invasion": angiolymphatic_invasion, "venous_invasion": {"value": "Not Specified", "confidence": None, "status": "Not Specified"},
-                         "perineural_invasion": {"value": "Not Specified", "confidence": None, "status": "Not Specified"}, "positive_lymph_nodes_count": positive_lymph_nodes_count},
-        "report_status": "Processed Successfully"
-    }
-"""
-
 def run_clinicalbert_inference(report_text):
     if not cancer_model_loaded:
         st.error("Cancer classification model failed to load. Pls fix.")
@@ -207,9 +177,31 @@ def run_clinicalbert_inference(report_text):
             predicted_class = torch.argmax(predictions, dim=-1).item()
             confidence = predictions[0][predicted_class].item()
         
-        # TODO: Make function that gets cancer subtypes from TCGA_patient_to_cancer_type.csv, then plug them into this bad boy --> class_to_cancer = {}
+        class_to_cancer = get_cancer_type()
 
-        # TODO: Just have M, N, and T models output 1 until I get trained models
+        cancer_type = {
+            "value": class_to_cancer.get(predicted_class, "NULL"),
+            "confidence": round(confidence, 3),
+            "status": "ModernBERT"
+        }
+
+        # TEMPORARY M, N, and T values
+        m_stage = {"value": "1", "confidence": 1, "status": "DEBUG"}
+        n_stage = {"value": "1", "confidence": 1, "status": "DEBUG"}
+        t_stage = {"value": "1", "confidence": 1, "status": "DEBUG"}
+
+        return {
+            "cancer_type": cancer_type,
+            "tnm_staging": {
+                "m_stage": m_stage,
+                "n_stage": n_stage,
+                "t_stage": t_stage
+            },
+        }
+
+    except Exception as e:
+        st.error(f"Error during model inference: {e}")
+        return None
 
 def plot_top_ngrams(text_series, n=2, top_k=20):
     """Calculates and plots the top K n-grams from a text series."""
