@@ -26,10 +26,10 @@ print(f"Using device: {device}")
 MODEL_NAME = os.path.join(os.path.dirname(__file__), "answerdotai")
 
 # Data file paths
-PATH_REPORTS = '../../../Data/NM-NLP/TCGA_Reports.csv'
-PATH_T_STAGE = '../../../Data/NM-NLP/TCGA_T14_patients.csv'
-PATH_N_STAGE = '../../../Data/NM-NLP/TCGA_N03_patients.csv'
-PATH_M_STAGE = '../../../Data/NM-NLP/TCGA_M01_patients.csv'
+PATH_REPORTS = '../Data/TCGA_Reports.csv'
+PATH_T_STAGE = '../Data/TCGA_T14_patients.csv'
+PATH_N_STAGE = '../Data/TCGA_N03_patients.csv'
+PATH_M_STAGE = '../Data/TCGA_M01_patients.csv'
 
 # Training parameters
 MAX_LEN = 512
@@ -115,6 +115,20 @@ def prep_tnm_data(reports_path, stage_path, stage_column, stage_name):
     # Encode labels
     label_encoder = LabelEncoder()
     df_merged['label'] = label_encoder.fit_transform(df_merged[stage_column])
+
+    # Removes classes with less than 10 samples so there are enough samples after split. 80/20 -> 50/50 of 20. So min 10 samples.
+    class_counts = df_merged['label'].value_counts()
+    rare_classes = class_counts[class_counts < 10].index
+    
+    if len(rare_classes) > 0:
+        rare_stage_names = [label_encoder.classes_[i] for i in rare_classes]
+        print(f"Removing {len(rare_classes)} rare classes with <10 samples: {rare_stage_names}")
+        df_merged = df_merged[~df_merged['label'].isin(rare_classes)]
+        
+        # Re-encode labels after removing rare classes
+        remaining_stages = df_merged[stage_column].unique()
+        label_encoder = LabelEncoder()
+        df_merged['label'] = label_encoder.fit_transform(df_merged[stage_column])
 
     print(f"Data prepared. Found {len(df_merged)} samples and {len(label_encoder.classes_)} unique {stage_name} stages.")
     print(f"{stage_name} stages: {sorted(label_encoder.classes_)}")
