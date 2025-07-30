@@ -12,6 +12,7 @@ import os
 # Core imports for ClinicalBERT
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
+import pickle
 
 # Imports for advanced analysis
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
@@ -75,6 +76,33 @@ def load_cancer_model():
         return None, None, False
     
 cancer_tokenizer, cancer_model, cancer_model_loaded = load_cancer_model()
+
+# Load TNM staging models
+@st.cache_resource
+def load_tnm_models():
+    try:
+        models = {}
+        tokenizers = {}
+        label_encoders = {}
+        
+        for stage in ['t', 'n', 'm']:
+            model_path = f"models/{stage}_stage_model"
+            
+            # Load model and tokenizer
+            tokenizers[stage] = AutoTokenizer.from_pretrained(model_path)
+            models[stage] = AutoModelForSequenceClassification.from_pretrained(model_path)
+            models[stage].eval()
+            
+            # Load label encoder
+            with open(f"{model_path}/label_encoder.pkl", 'rb') as f:
+                label_encoders[stage] = pickle.load(f)
+        
+        return tokenizers, models, label_encoders, True
+    except Exception as e:
+        st.error(f"Error loading TNM models: {e}")
+        return None, None, None, False
+
+tnm_tokenizers, tnm_models, tnm_label_encoders, tnm_models_loaded = load_tnm_models()
 
 @st.cache_resource
 def load_spacy_model_cached():
@@ -159,7 +187,9 @@ def run_clinicalbert_inference(report_text):
             return text
 
         squeaky_clean_text = clean_text(report_text)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        # Cancer type prediction
         inputs = cancer_tokenizer(
             squeaky_clean_text, 
             add_special_tokens=True,
@@ -171,8 +201,6 @@ def run_clinicalbert_inference(report_text):
             return_tensors='pt'
         )
 
-        # Run the inference
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         inputs = {k: v.to(device) for k, v in inputs.items()}
         cancer_model.to(device)
 
@@ -184,21 +212,46 @@ def run_clinicalbert_inference(report_text):
         
         class_to_cancer = get_cancer_type()
 
-        # TEMPORARY M, N, and T values
-        m_stage = {"value": "1", "confidence": 1, "status": "DEBUG"}
-        n_stage = {"value": "1", "confidence": 1, "status": "DEBUG"}
-        t_stage = {"value": "1", "confidence": 1, "status": "DEBUG"}
+        # TNM staging predictions
+        tnm_stages = {}
+        if tnm_models_loaded:
+            for stage in ['t', 'n', 'm']:
+                tnm_inputs = tnm_tokenizers[stage](
+                    squeaky_clean_text,
+                    add_special_tokens=True,
+                    max_length=512,
+                    return_token_type_ids=False,
+                    padding='max_length',
+                    truncation=True,
+                    return_attention_mask=True,
+                    return_tensors='pt'
+                )
+                
+                tnm_inputs = {k: v.to(device) for k, v in tnm_inputs.items()}
+                tnm_models[stage].to(device)
+                
+                with torch.no_grad():
+                    tnm_outputs = tnm_models[stage](**tnm_inputs)
+                    tnm_predictions = torch.nn.functional.softmax(tnm_outputs.logits, dim=-1)
+                    tnm_predicted_class = torch.argmax(tnm_predictions, dim=-1).item()
+                    tnm_confidence = tnm_predictions[0][tnm_predicted_class].item()
+                
+                stage_value = tnm_label_encoders[stage].inverse_transform([tnm_predicted_class])[0]
+                tnm_stages[f"{stage}_stage"] = {
+                    "value": stage_value,
+                    "confidence": round(tnm_confidence, 3)
+                }
+        else:
+            # Fallback to debug values if TNM models not loaded
+            for stage in ['t', 'n', 'm']:
+                tnm_stages[f"{stage}_stage"] = {"value": "1", "confidence": 1}
 
         return {
             "cancer_type": {
                 "value": class_to_cancer.get(predicted_class, "Unknown"),
                 "confidence": round(confidence, 3)
             },
-            "tnm_staging": {
-                "m_stage": m_stage,
-                "n_stage": n_stage,
-                "t_stage": t_stage
-            },
+            "tnm_staging": tnm_stages,
         }
 
     except Exception as e:
