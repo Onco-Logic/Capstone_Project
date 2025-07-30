@@ -36,7 +36,8 @@ except ImportError as e:
 
 st.set_page_config(layout="wide", page_title="NLP Pipeline for Pathology Reports")
 
-# Annoying. Disable if something breaks.
+# Suppress warnings to improve readability in the output. 
+# This includes warnings from libraries such as matplotlib and seaborn that may not affect functionality.
 warnings.filterwarnings('ignore')
 os.environ['UMAP_DISABLE_NUMA_WARNINGS'] = '1'
 
