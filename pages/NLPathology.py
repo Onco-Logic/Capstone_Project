@@ -623,7 +623,7 @@ def interactive_report_processing():
                                 if "API key" not in str(prognosis_result.get('error', '')).lower():
                                     st.error(f"Failed to generate prognosis summary: {prognosis_result['error']}")
                                 else:
-                                    st.info("💡 To enable AI-generated prognosis summaries, please add your OpenRouter API key to the .env file.")
+                                    st.info("Please add OpenRouter API key to the .env file.")
                                 
                         except Exception as e:
                             # Only show error if it's not an API key issue
@@ -631,7 +631,7 @@ def interactive_report_processing():
                             if "api key" not in error_msg and "openrouter" not in error_msg:
                                 st.error(f"Error generating prognosis summary: {str(e)}")
                             else:
-                                st.info("� To enable AI-generated prognosis summaries, please add your OpenRouter API key to the .env file.")
+                                st.info("Please add OpenRouter API key to the .env file.")
                 
                 else:
                     st.info("💡 AI prognosis summary feature is available. Please ensure the LLM API module is properly installed.")
