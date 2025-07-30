@@ -513,7 +513,41 @@ def interactive_report_processing():
     st.write("Upload a pathology report file (.txt) or paste text directly to generate a structured summary report.")
 
     uploaded_file = st.file_uploader("Upload a .txt file", type=["txt"])
-    report_text_input = st.text_area("Or paste pathology report text here:", height=300)
+    
+    # Sample pathology report options
+    sample_options = {
+        "Select One": "",
+        "123": "123",
+        "456": "123", 
+        "789": "123"
+    }
+    
+    selected_sample = st.selectbox(
+        "Choose from sample pathology reports:",
+        options=list(sample_options.keys()),
+        index=0
+    )
+    
+    # Handle text area input with proper state management
+    if selected_sample != "Select a sample pathology report...":
+        default_text = sample_options[selected_sample]
+        if 'last_selected_sample' not in st.session_state or st.session_state.last_selected_sample != selected_sample:
+            st.session_state.last_selected_sample = selected_sample
+            st.session_state.report_text = default_text
+    else:
+        if 'report_text' not in st.session_state:
+            st.session_state.report_text = ""
+    
+    report_text_input = st.text_area(
+        "Or paste pathology report text here:", 
+        value=st.session_state.get('report_text', ''),
+        height=300,
+        key='pathology_text_area'
+    )
+    
+    # Update session state when user types in text area
+    if report_text_input != st.session_state.get('report_text', ''):
+        st.session_state.report_text = report_text_input
 
     processed_text = ""
     if uploaded_file is not None:
