@@ -6,10 +6,17 @@ import random
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import warnings
+import os
+import sys
+
+# Add scripts folder to path for importing llm_api
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts'))
 
 # Core imports for ClinicalBERT
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
+import pickle
 
 # Imports for advanced analysis
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
@@ -19,28 +26,96 @@ import umap.umap_ as umap # Import UMAP
 import spacy
 from spacy import displacy
 
+# Import our LLM API module
+try:
+    from llm_api import create_prognosis_summary, OpenRouterAPI
+    LLM_API_AVAILABLE = True
+except ImportError as e:
+    st.warning(f"LLM API module not available: {e}")
+    LLM_API_AVAILABLE = False
+
 st.set_page_config(layout="wide", page_title="NLP Pipeline for Pathology Reports")
+
+# Suppress warnings to improve readability in the output. 
+# This includes warnings from libraries such as matplotlib and seaborn that may not affect functionality.
+warnings.filterwarnings('ignore')
+os.environ['UMAP_DISABLE_NUMA_WARNINGS'] = '1'
 
 # --- MODEL LOADING ---
 
 # Global variables for ClinicalBERT model and tokenizer
 tokenizer = None
 base_clinicalbert_model = None
-CLINICALBERT_BASE_MODEL_NAME = "emilyalsentzer/Bio_ClinicalBERT"
 
-@st.cache_resource
-def load_clinicalbert_base_model_cached():
-    """Caches and loads the ClinicalBERT base model and tokenizer."""
+# Sample use for debugging
+# CLINICALBERT_BASE_MODEL_NAME = "emilyalsentzer/Bio_ClinicalBERT"
+
+# Get cancer type list from TCGA_patient_to_cancer_type.csv, returns it as class_to_cancer
+@st.cache_data
+def get_cancer_type():
     try:
-        loaded_tokenizer = AutoTokenizer.from_pretrained(CLINICALBERT_BASE_MODEL_NAME)
-        loaded_model = AutoModelForSequenceClassification.from_pretrained(CLINICALBERT_BASE_MODEL_NAME)
-        loaded_model.eval()
-        st.success(f"Standard ClinicalBERT base model '{CLINICALBERT_BASE_MODEL_NAME}' and tokenizer loaded successfully!")
-        return loaded_tokenizer, loaded_model
+        df_cancer_types = pd.read_csv("Data/TCGA_patient_to_cancer_type.csv")
+        cancer_types = sorted(df_cancer_types['cancer_type'].unique())
+
+        # Because there are no pathology reports for LAML cancer. For reference, patient id with LAML cancer has prefix TCGA-AB.
+        cancer_types.remove('LAML')
+
+        class_to_cancer = {i: cancer_type for i, cancer_type in enumerate(cancer_types)}
+
+        # DEBUG. Disable when complete.
+        # st.info(f"Found {len(cancer_types)} unique cancer types: {cancer_types}")
+
+        return class_to_cancer
     except Exception as e:
-        st.error(f"Failed to load standard ClinicalBERT base model. Error: {e}")
-        st.info("Falling back to dummy inference for demonstration.")
-        return None, None
+        st.error(f"Error in retrieving cancer types: {e}")
+        return
+
+
+# Encoder LLM. Finetuned ModernBERT thing.
+@st.cache_resource
+def load_cancer_model():
+    try:
+        model_path = "models/cancer_classifier"
+        
+        class_to_cancer = get_cancer_type()
+
+        cancer_tokenizer = AutoTokenizer.from_pretrained(model_path)
+        cancer_model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=len(class_to_cancer))
+        cancer_model.eval()
+
+        return cancer_tokenizer, cancer_model, True
+    except Exception as e:
+        st.error(f"Error loading cancer model: {e}")
+        return None, None, False
+    
+cancer_tokenizer, cancer_model, cancer_model_loaded = load_cancer_model()
+
+# Load TNM staging models
+@st.cache_resource
+def load_tnm_models():
+    try:
+        models = {}
+        tokenizers = {}
+        label_encoders = {}
+        
+        for stage in ['t', 'n', 'm']:
+            model_path = f"models/{stage}_stage_model"
+            
+            # Load model and tokenizer
+            tokenizers[stage] = AutoTokenizer.from_pretrained(model_path)
+            models[stage] = AutoModelForSequenceClassification.from_pretrained(model_path)
+            models[stage].eval()
+            
+            # Load label encoder
+            with open(f"{model_path}/label_encoder.pkl", 'rb') as f:
+                label_encoders[stage] = pickle.load(f)
+        
+        return tokenizers, models, label_encoders, True
+    except Exception as e:
+        st.error(f"Error loading TNM models: {e}")
+        return None, None, None, False
+
+tnm_tokenizers, tnm_models, tnm_label_encoders, tnm_models_loaded = load_tnm_models()
 
 @st.cache_resource
 def load_spacy_model_cached():
@@ -56,10 +131,7 @@ def load_spacy_model_cached():
         return None
 
 # Attempt to load models once at the start
-tokenizer, base_clinicalbert_model = load_clinicalbert_base_model_cached()
-models_loaded_successfully = (tokenizer is not None) and (base_clinicalbert_model is not None)
 nlp_spacy = load_spacy_model_cached()
-
 
 # --- DATA LOADING & PREPARATION ---
 
@@ -109,67 +181,95 @@ def preprocess_text_for_eda(text):
 
 # --- NLP INFERENCE & ANALYSIS LOGIC ---
 
-def _dummy_inference_fallback(report_text):
-    """Provides a dummy inference fallback for demonstration purposes."""
-    common_cancer_types = ["BRCA", "LUAD", "COAD", "KIRC", "GBM"]
-    common_t_stages = ["T1", "T1a", "T1b", "T2", "T2a", "T2b", "T3", "T4", "TX"]
-    common_n_stages = ["N0", "N1", "N1a", "N1b", "N2", "N3", "NX"]
-    common_m_stages = ["M0", "M1", "M1a", "M1b", "M1c", "MX"]
-    common_histologic_types = ["ductal carcinoma", "adenocarcinoma", "squamous cell carcinoma", "renal cell carcinoma", "glioma"]
-
-    cancer_type = {"value": random.choice(common_cancer_types), "confidence": round(random.uniform(0.85, 0.99), 2), "status": "Assessed"}
-    t_stage = {"value": random.choice(common_t_stages), "confidence": round(random.uniform(0.85, 0.99), 2), "status": "Assessed"}
-    n_stage = {"value": random.choice(common_n_stages), "confidence": round(random.uniform(0.85, 0.99), 2), "status": "Assessed"}
-    m_stage = {"value": random.choice(common_m_stages), "confidence": round(random.uniform(0.85, 0.99), 2), "status": "Assessed"}
-
-    # Initialize features with default values
-    tumor_size = {"value": "Not Specified", "unit": None, "confidence": None, "status": "Not Specified"}
-    histologic_type = {"value": "Not Specified", "confidence": None, "status": "Not Specified"}
-    margins_status = {"value": "Not Specified", "confidence": None, "status": "Not Specified"}
-    angiolymphatic_invasion = {"value": "Not Specified", "confidence": None, "status": "Not Specified"}
-    positive_lymph_nodes_count = {"value": "Not Specified", "total_examined": None, "confidence": None, "status": "Not Specified"}
+def run_clinicalbert_inference(report_text):
+    if not cancer_model_loaded:
+        st.error("Cancer classification model failed to load. Pls fix.")
+        return None
 
     if pd.isna(report_text) or not report_text.strip():
-        # Return a structure indicating insufficient information
+        st.error("No text provided for analysis.")
+        return None
+
+    try:
+        def clean_text(text):
+            if not isinstance(text, str):
+                return ""
+            text = text.lower()
+            text = re.sub(r'[^a-z0-9\s\.]', '', text)
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text
+
+        squeaky_clean_text = clean_text(report_text)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Cancer type prediction
+        inputs = cancer_tokenizer(
+            squeaky_clean_text, 
+            add_special_tokens=True,
+            max_length=512,
+            return_token_type_ids=False,
+            padding='max_length',
+            truncation=True,
+            return_attention_mask=True,
+            return_tensors='pt'
+        )
+
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        cancer_model.to(device)
+
+        with torch.no_grad():
+            outputs = cancer_model(**inputs)
+            predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
+            predicted_class = torch.argmax(predictions, dim=-1).item()
+            confidence = predictions[0][predicted_class].item()
+        
+        class_to_cancer = get_cancer_type()
+
+        # TNM staging predictions
+        tnm_stages = {}
+        if tnm_models_loaded:
+            for stage in ['t', 'n', 'm']:
+                tnm_inputs = tnm_tokenizers[stage](
+                    squeaky_clean_text,
+                    add_special_tokens=True,
+                    max_length=512,
+                    return_token_type_ids=False,
+                    padding='max_length',
+                    truncation=True,
+                    return_attention_mask=True,
+                    return_tensors='pt'
+                )
+                
+                tnm_inputs = {k: v.to(device) for k, v in tnm_inputs.items()}
+                tnm_models[stage].to(device)
+                
+                with torch.no_grad():
+                    tnm_outputs = tnm_models[stage](**tnm_inputs)
+                    tnm_predictions = torch.nn.functional.softmax(tnm_outputs.logits, dim=-1)
+                    tnm_predicted_class = torch.argmax(tnm_predictions, dim=-1).item()
+                    tnm_confidence = tnm_predictions[0][tnm_predicted_class].item()
+                
+                stage_value = tnm_label_encoders[stage].inverse_transform([tnm_predicted_class])[0]
+                tnm_stages[f"{stage}_stage"] = {
+                    "value": stage_value,
+                    "confidence": round(tnm_confidence, 3)
+                }
+        else:
+            # Fallback to debug values if TNM models not loaded
+            for stage in ['t', 'n', 'm']:
+                tnm_stages[f"{stage}_stage"] = {"value": "1", "confidence": 1}
+
         return {
-            "cancer_type": {"value": "Insufficient Info", "confidence": None, "status": "Insufficient Info"},
-            "tnm_staging": {k: {"value": "Insufficient Info", "confidence": None, "status": "Insufficient Info"} for k in ["t_stage", "n_stage", "m_stage"]},
-            "key_features": {k: {"value": "Not Specified", "confidence": None, "status": "Not Specified"} for k in ["tumor_size_cm", "histologic_type", "margins_status", "angiolymphatic_invasion", "venous_invasion", "perineural_invasion", "positive_lymph_nodes_count"]},
-            "report_status": "Insufficient Information in Text"
+            "cancer_type": {
+                "value": class_to_cancer.get(predicted_class, "Unknown"),
+                "confidence": round(confidence, 3)
+            },
+            "tnm_staging": tnm_stages,
         }
 
-    # Simplified regex extraction logic
-    size_match = re.search(r'tumor size.*?(\d+\.?\d*)\s*(cm|mm)', report_text, re.IGNORECASE)
-    if size_match:
-        value, unit = float(size_match.group(1)), size_match.group(2).lower()
-        if unit == 'mm': value /= 10
-        tumor_size = {"value": str(value), "unit": 'cm', "confidence": round(random.uniform(0.9, 0.99), 2), "status": "Extracted"}
-
-    # ... (other regex logic remains the same) ...
-
-    return {
-        "cancer_type": cancer_type, "tnm_staging": {"t_stage": t_stage, "n_stage": n_stage, "m_stage": m_stage},
-        "key_features": {"tumor_size_cm": tumor_size, "histologic_type": histologic_type, "margins_status": margins_status,
-                         "angiolymphatic_invasion": angiolymphatic_invasion, "venous_invasion": {"value": "Not Specified", "confidence": None, "status": "Not Specified"},
-                         "perineural_invasion": {"value": "Not Specified", "confidence": None, "status": "Not Specified"}, "positive_lymph_nodes_count": positive_lymph_nodes_count},
-        "report_status": "Processed Successfully"
-    }
-
-def run_clinicalbert_inference(report_text):
-    """Performs inference using ClinicalBERT or falls back to a dummy function."""
-    if not models_loaded_successfully:
-        return _dummy_inference_fallback(report_text)
-    if pd.isna(report_text) or not report_text.strip():
-        return _dummy_inference_fallback(report_text) # Fallback for empty text
-
-    inputs = tokenizer(report_text, return_tensors="pt", truncation=True, padding=True, max_length=512)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-    base_clinicalbert_model.to(device)
-    with torch.no_grad():
-        outputs = base_clinicalbert_model(**inputs)
-    st.info("ClinicalBERT processed the text. Specific task predictions are simulated as the base model is not fine-tuned.")
-    return _dummy_inference_fallback(report_text)
+    except Exception as e:
+        st.error(f"Error during model inference: {e}")
+        return None
 
 def plot_top_ngrams(text_series, n=2, top_k=20):
     """Calculates and plots the top K n-grams from a text series."""
@@ -429,66 +529,113 @@ def interactive_report_processing():
     if st.button("Generate Structured Report"):
         if processed_text:
             with st.spinner("Processing report..."):
-                st.subheader("Generated Report:")
-                patient_id_for_interactive = "USER-INPUT-001"
                 generated_report = run_clinicalbert_inference(processed_text)
-                generated_report["patient_id"] = patient_id_for_interactive
 
-                st.markdown("### Patient Summary")
+                if generated_report is None:
+                    return
+
+                st.markdown("## Patient Summary")
+
                 col1, col2 = st.columns(2)
-                col1.metric("Patient ID", generated_report['patient_id'])
                 
                 cancer_type_val = generated_report['cancer_type']['value']
                 cancer_type_conf = generated_report['cancer_type'].get('confidence')
-                cancer_type_status = generated_report['cancer_type']['status']
                 
-                if cancer_type_status != "Assessed":
-                    col2.metric("Cancer Type", cancer_type_val, delta=cancer_type_status, delta_color="off")
-                else:
-                    col2.metric("Cancer Type", cancer_type_val, f"Confidence: {cancer_type_conf:.2f}")
+                col1.metric(
+                    "Cancer Type",
+                    cancer_type_val,
+                    delta=f"Confidence: {cancer_type_conf:.2f}",
+                    delta_color="normal"
+                )
 
                 st.markdown("### TNM Staging")
                 tnm_data = []
+                staging_mapping = {
+                    't_stage': 'T Stage (Tumor)',
+                    'n_stage': 'N Stage (Nodes)', 
+                    'm_stage': 'M Stage (Metastasis)'
+                }
+                
                 for stage_key, stage_info in generated_report['tnm_staging'].items():
-                    value = stage_info['value']
-                    confidence = stage_info.get('confidence')
-                    status = stage_info['status']
-                    display_confidence = f"{confidence:.2f}" if confidence is not None else "N/A"
-                    
                     tnm_data.append({
-                        "Stage": stage_key.replace('_', ' ').title(),
-                        "Value": value,
-                        "Confidence": display_confidence,
-                        "Status": status
+                        "Stage Type": staging_mapping.get(stage_key, stage_key),
+                        "Value": stage_info['value'],
+                        "Confidence": f"{stage_info['confidence']:.1f}"
                     })
-                st.dataframe(pd.DataFrame(tnm_data))
+                
+                df_tnm = pd.DataFrame(tnm_data)
+                st.dataframe(df_tnm, use_container_width=True)
 
-                st.markdown("### Key Features Extracted")
-                features_data = []
-                for feature_key, feature_info in generated_report['key_features'].items():
-                    value = feature_info['value']
-                    confidence = feature_info.get('confidence')
-                    status = feature_info['status']
-                    unit = feature_info.get('unit', '')
-                    total_examined = feature_info.get('total_examined', '')
-
-                    display_value = str(value)
-                    if unit:
-                        display_value += f" {unit}"
-                    if total_examined:
-                        display_value += f" (of {total_examined})"
+                # Basic Summary
+                st.markdown("### Clinical Analysis")
+                st.success(
+                    f"""
+                    **Cancer Type Prediction**: {cancer_type_val} ({cancer_type_conf:.1%} confidence)
                     
-                    display_confidence = f"{confidence:.2f}" if confidence is not None else "N/A"
+                    **TNM Staging**: {generated_report['tnm_staging']['t_stage']['value']}, {generated_report['tnm_staging']['n_stage']['value']}, {generated_report['tnm_staging']['m_stage']['value']}
+                    """)
 
-                    features_data.append({
-                        "Feature": feature_key.replace('_', ' ').title(),
-                        "Value": display_value,
-                        "Confidence": display_confidence,
-                        "Status": status
-                    })
-                st.dataframe(pd.DataFrame(features_data))
+                # Generate AI Prognosis Summary automatically if LLM API is available
+                if LLM_API_AVAILABLE:
+                    st.markdown("### Prognosis Summary")
+                    
+                    with st.spinner("Generating analysis summary..."):
+                        try:
+                            prognosis_result = create_prognosis_summary(
+                                pathology_text=processed_text,
+                                clinical_results=generated_report
+                            )
+                            
+                            if prognosis_result['success']:
+                                st.markdown(prognosis_result['summary'])
+                                
+                                # Show usage information in a subtle way
+                                if 'usage' in prognosis_result and prognosis_result['usage']:
+                                    usage = prognosis_result['usage']
+                                    with st.expander("API Usage Details"):
+                                        st.info(f"Tokens used: {usage.get('total_tokens', 'N/A')} | Model: {prognosis_result.get('model', 'N/A')}")
+                                
+                                # Option to download the complete report
+                                complete_report = f"""
+                                    # Pathology Report Analysis
 
-                st.success(f"Overall Report Status: {generated_report['report_status']}")
+                                    ## Clinical Analysis Results
+                                    - **Cancer Type**: {cancer_type_val} (Confidence: {cancer_type_conf:.1%})
+                                    - **TNM Staging**: {generated_report['tnm_staging']['t_stage']['value']}, {generated_report['tnm_staging']['n_stage']['value']}, {generated_report['tnm_staging']['m_stage']['value']}
+
+                                    ## Professional Prognosis Summary
+                                    {prognosis_result['summary']}
+
+                                    ## Original Pathology Report
+                                    {processed_text}
+
+                                    ---
+                                    *Generated by Onco-Logic NLP Pipeline*
+                                    """
+                                st.download_button(
+                                    label="📄 Download Complete Report",
+                                    data=complete_report,
+                                    file_name="pathology_analysis_report.md",
+                                    mime="text/markdown"
+                                )
+                                
+                            else:
+                                # Only show error if it's not an API key issue
+                                if "API key" not in str(prognosis_result.get('error', '')).lower():
+                                    st.error(f"Failed to generate prognosis summary: {prognosis_result['error']}")
+                                else:
+                                    st.info("Please add OpenRouter API key to the .env file.")
+                                
+                        except Exception as e:
+                            # Only show error if it's not an API key issue
+                            error_msg = str(e).lower()
+                            if "api key" not in error_msg and "openrouter" not in error_msg:
+                                st.error(f"Error generating prognosis summary: {str(e)}")
+                            else:
+                                st.info("Please add OpenRouter API key to the .env file.")
+                
+                else:
+                    st.info("💡 AI prognosis summary feature is available. Please ensure the LLM API module is properly installed.")
 
                 with st.expander("Show Raw JSON Output"):
                     st.json(generated_report)

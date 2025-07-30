@@ -1,0 +1,32 @@
+models/
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.staging
+
+# API keys and secrets
+*.key
+secrets/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
