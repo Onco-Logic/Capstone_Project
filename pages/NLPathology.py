@@ -124,7 +124,6 @@ def load_spacy_model_cached():
         # For a real clinical task, you'd use a specialized model like 'en_core_sci_sm'
         # For this demo, we use the general-purpose 'en_core_web_sm'
         nlp = spacy.load("en_core_web_sm")
-        st.success("SpaCy model ('en_core_web_sm') for NER demonstration loaded successfully!")
         return nlp
     except OSError:
         st.error("SpaCy model 'en_core_web_sm' not found. Please run 'python -m spacy download en_core_web_sm' in your terminal.")
@@ -510,20 +509,27 @@ def run_nlp_pipeline():
 def interactive_report_processing():
     """Renders the interactive report processing page."""
     st.header("3. Interactive Report Processing")
-    st.write("Upload a pathology report file (.txt) or paste text directly to generate a structured summary report.")
+    st.write("Upload a pathology report to generate a summary report.")
 
     uploaded_file = st.file_uploader("Upload a .txt file", type=["txt"])
+
+    sample_1 = "Date of Recelpt: Clinical Diagnosis & History: Incidental 3 cm left upper pole renal mass. Specimens Submitted: 1: Kidney, Left Upper Pole; Partial Nephrectomy. DIAGNOSIS: 1. Kidney, Left Upper Pole; Partial Nephrectomy: Tumor Type: Renal cell carcinoma - Conventional (clear cell) type. Fuhrman Nuclear Grade: Nuclear grade II/IV. Tumor Size: Greatest diameter is 2.4 cm. Local Invasion (for renal cortical types): Not Identified. Renal Vein Invasion: Not identified. Surgical Margins: Free of tumor. Non-Neoplastic Kidney: shows focal chronic inflammation and focal superficial glomerulosclerosis. Adrenal Gland: Not identified. Lymph Nodes: Not identified. Staging for renal cell carcinoma/oncocytoma: pT1 Tumor <= 7.0 cm in greatest dimension limited to the kidney. JATTEST THAT THE ABOVE DIAGNOSIS IS BASED UPON MY PERSONAL EXAMINATION OF THE SLIDES (AND/OR OTHER MATERIAL), AND THAT IHAVE. REVIEWED AND APPROVED THIS REPORT. Gross Description: 1). The specimen Is received fresh for frozen section consultation, labeled ""left upper pole renal tumor stitch marks deep margin"". It consists of a 6.6 X 3.7 x 2.9 cm wedge shaped portion of kidney with a suture marking the deep margin and attached 12.2 x 8,5 x. 2.7 cm of perirenal. Also received in the same container Is a separate 11.6 x 8.4 x 4.6 cm aggregate of unremarkable. fibroadipose tissue. The margin is inked black and the specimen is serially sectioned to reveal a well-circumscribed cortically. based yellow focally hemorrhagic 2.4 x 2.0 x 1.9 cm tumor. The tumor appears grossly confined to the renal parenchyma, no. extension into perirenal fat is identified. The clearance from the resection margin is 1.1 cm. A representative section of the. nearest margin is submilted for frozen section diagnosis. Representatively submitted. A photograph Is taken. Portions of the. tumor are submitted for TPS. Summary of sections: FSC - frozen section control. T tumor. M margin. RS - representative sections. Summary of Sections: Part 1: Kidney, Left Upper Pole; Partial Nephrectomy. Block. Sect. Site. PCs. 1. fsc. 1. 2. m. 2. 1. rs. 1. 2. t. 2. Intraoperative Consultation: Note: The diagnoses given in this section pertain only to the. tissue sample examined at the time of the intraoperative. consultation. 1). FROZEN SECTION DIAGNOSIS: LEFT UPPER POLE RENAL TUMOR. RENAL CORTICAL NEOPLASM. WITH BENIGN MARGIN. PERMANENT DIAGNOSIS: SAME."
+
+    sample_2 = "Material: 1) Material: stomach, Method of collection: Lesion resection. Histopathological diagnosis: (including test No. G-3155/12): Adenocarcinoma tubuläre ventriculi. G3, pT3, pNO. Tubular adenocarcinoma of the. stomach. Typus intestinalis sec Lauren. Intestinal type Lauren. Macroscopic description: Adenocarcinoma tubuläre G3. Cancerous proliferation reaches the periteneal surface of the stomach. Surgical incision lines free of. neoplastic lesions. Mucosa outside the tumour showing features of chronic inflammation with focal intestinal metaplasia. Adjacent part of the omentum free of cancerous lesions. 3 - (lesser curvature): Lymphonodulitis reactivaNo VIII. 4 - (greater curvature) :Lymphonodulitis reactiva No VII. 5 - (peripyloric): Lymphonodulitis reactivaNo IV. Microscopic description: The specimen containing the stomach, after being incised along the greater curvature sized 18.5 X 16cm with the. omentum sized 30 X 16cm. Cauliflower-shaped tumour on the greater curvature sized 5.5 X 4.5 X 2.4 cm. Distance from. the proximal end: 8.0cm, from distal end: 5.0cm."
+
+    sample_3 = "page 1 / 1. copy No. 3. Examination: Histopathological examination. Cost of diagnostic procedure. Material: 1. Total organ resection - rectum and sigmoid colon. Material collected. Expected time of examination: Clinical diagnosis: Cancer of the rectosigmoid junction. Macroscopic description: A 26 cm length of the large intestine with a piece of mesentery and periintestinal tissue sized 20 X 11.7 cm. A tumour. sized 1.6 X 1 X 1.8 cm found in the mesentery. A flat tumour sized 7.8 X 2 X 0.6 cm found in the mesentery infiltrating. the whole thickness of the intestine. The lesion surrounds 100% of the intestine circumference and narrows its. lumen, is located 14.5 cm away from one of the excision lines and 4.3 cm from the other one. Minimum side margin. is 3 cm. Neighbouring lymph nodes are metastatic in gross appearance forming concretions. Microscopic description: Adenocarcinoma mucocellulare et mucinosum (G3). Infiltratio carcinomatosa profunda tunicae. muscularis priopriae et serosae flexure coli (sigmoideo - rectalis) et telae adiposae mesenterii et. mesorecti. Intestine ends clear of neoplastic lesions. Metastases carcinomatosae in lymphonodis (NO XXX/XXX). Infiltratio carcinomatosa capsulae lymphonodorum et telae adiposae perinodalis. The number of lymph nodes difficult to assess due to the concretions. Histopathology diagnosis: Adenocarcinoma mucocellulare et mucinosum flexure sigmoideo - rectalis. Mucocellular and mucinous. adenocarcinoma of sigmoid rectal junction. Metastases carcinomatosae in lymphonodis. Cancer metastases in the lymph nodes (No XXX/XXX). (G3, Dukes C, Atler - Coller C2, pT4, pN2b)."
+    
     
     # Sample pathology report options
     sample_options = {
         "Select One": "",
-        "123": "123",
-        "456": "123", 
-        "789": "123"
+        "Sample 1": sample_1,
+        "Sample 2": sample_2, 
+        "Sample 3": sample_3
     }
     
     selected_sample = st.selectbox(
-        "Choose from sample pathology reports:",
+        "Choose from sample pathology reports",
         options=list(sample_options.keys()),
         index=0
     )
@@ -539,7 +545,7 @@ def interactive_report_processing():
             st.session_state.report_text = ""
     
     report_text_input = st.text_area(
-        "Or paste pathology report text here:", 
+        "Or paste pathology report text here", 
         value=st.session_state.get('report_text', ''),
         height=300,
         key='pathology_text_area'
