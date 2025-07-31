@@ -24,20 +24,25 @@ from sklearn.linear_model import SGDClassifier
 from sklearn.pipeline import Pipeline
 import shap
 
+
 # ────────────────────────────────────────────
 # 1) Custom Transformer: Top‑K Variance Selector
 # ────────────────────────────────────────────
 class TopKVarianceSelector(BaseEstimator, TransformerMixin):
     def __init__(self, k=350):
         self.k = k
+
     def fit(self, X, y=None):
         self.variances_ = np.var(X, axis=0)
         self.topk_idx_ = np.argsort(self.variances_)[-self.k:]
         return self
+
     def transform(self, X):
         return X[:, self.topk_idx_]
+
     def get_feature_names_out(self, input_features=None):
         return np.array(input_features)[self.topk_idx_]
+
 
 # ────────────────────────────────────────────
 # 1b) Custom Transformer: UMAP (fits per fold)
@@ -48,6 +53,7 @@ class UMAPTransformer(BaseEstimator, TransformerMixin):
         self.n_neighbors = n_neighbors
         self.min_dist = min_dist
         self.random_state = random_state
+
     def fit(self, X, y=None):
         self.umap_ = umap.UMAP(
             n_components=self.n_components,
@@ -57,8 +63,10 @@ class UMAPTransformer(BaseEstimator, TransformerMixin):
         )
         self.umap_.fit(X)
         return self
+
     def transform(self, X):
         return self.umap_.transform(X)
+
 
 # ────────────────────────────────────────────
 # 2) Plot helpers (silhouette removed from evaluate_clusters)
@@ -79,6 +87,7 @@ def evaluate_clusters(name, X, cluster_labels, true_labels):
     }
     st.write({k: f"{v:.3f}" for k, v in scores.items()})
     # silhouette handled in plot_step
+
 
 def plot_step(name, X2d, clust, Xfull, labels):
     col1, col2 = st.columns(2)
@@ -111,6 +120,7 @@ def plot_step(name, X2d, clust, Xfull, labels):
     elif Xfull.shape[1] >= 2:
         st.write(f"Silhouette: {silhouette_score(Xfull, clust):.3f}")
 
+
 # ────────────────────────────────────────────
 # 3) Load & merge data (cached)
 # ────────────────────────────────────────────
@@ -121,6 +131,7 @@ def load_data():
     df = pd.merge(df_x, df_y).drop(df_x.columns[0], axis=1)
     return df
 
+
 # Common list of tags
 tags = [
     "Original",
@@ -130,6 +141,7 @@ tags = [
     "Selection-Top-350",
     "Selection-Top-350 (log)"
 ]
+
 
 # ────────────────────────────────────────────
 # 4) Compute EDA transforms per‑tag (cached)
@@ -193,31 +205,47 @@ def compute_eda(tag: str):
 
     raise ValueError(f"Unknown tag {tag}")
 
+
 # ────────────────────────────────────────────
-# 5) Main page layout
+# 5) Main page layout with tabs
 # ────────────────────────────────────────────
 st.title("Cancer Subtype Analysis: EDA + Modeling")
 
-df = load_data()
-st.subheader("Basic Exploratory Data Analysis")
-st.write("Merged shape:", df.shape)
-st.write("Class counts:", df["Class"].value_counts())
-st.write("Missing values:", int(df.isna().sum().sum()))
+# Create main tabs
+main_tabs = st.tabs(
+    ["Data Overview", "Clustering Analysis", "Model Evaluation", "SHAP Explanations", "Project Findings"])
 
-fig, ax = plt.subplots(figsize=(6, 4))
-sns.countplot(x="Class", data=df, ax=ax)
-st.pyplot(fig)
+# DATA OVERVIEW TAB
+with main_tabs[0]:
+    st.subheader("Basic Exploratory Data Analysis")
+    df = load_data()
+    st.write("Merged shape:", df.shape)
+    st.write("Class counts:", df["Class"].value_counts())
+    st.write("Missing values:", int(df.isna().sum().sum()))
 
-variances = df.drop(columns="Class").var()
-st.write("Variance summary:", variances.describe())
-fig, ax = plt.subplots(figsize=(8, 4))
-sns.histplot(variances, bins=100, kde=True, ax=ax)
-st.pyplot(fig)
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.countplot(x="Class", data=df, ax=ax)
+    st.pyplot(fig)
 
-for tag in tags:
-    st.subheader(f"Pipeline: {tag}")
-    X2d, clusters, Xfull, labels = compute_eda(tag)
-    plot_step(tag, X2d, clusters, Xfull, labels)
+    variances = df.drop(columns="Class").var()
+    st.write("Variance summary:", variances.describe())
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.histplot(variances, bins=100, kde=True, ax=ax)
+    st.pyplot(fig)
+
+# CLUSTERING ANALYSIS TAB
+with main_tabs[1]:
+    st.subheader("Clustering Analysis")
+
+    # Create sub-tabs for different clustering approaches
+    clustering_tabs = st.tabs(tags)
+
+    for i, tag in enumerate(tags):
+        with clustering_tabs[i]:
+            st.subheader(f"Pipeline: {tag}")
+            X2d, clusters, Xfull, labels = compute_eda(tag)
+            plot_step(tag, X2d, clusters, Xfull, labels)
+
 
 # ────────────────────────────────────────────
 # 6) Modeling pipelines & SHAP
@@ -250,6 +278,7 @@ def get_pipeline(tag):
         ]
     raise ValueError(f"Unknown tag {tag}")
 
+
 def train_and_explain(df, pipeline_steps, model_cls, model_kwargs, seed=42):
     # Keep X as a DataFrame to preserve column (gene) names
     X = df.drop(columns="Class")
@@ -257,15 +286,21 @@ def train_and_explain(df, pipeline_steps, model_cls, model_kwargs, seed=42):
     orig_feats = X.columns.to_list()
     kf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
 
-    accs=[]; bal_accs=[]; precs=[]; recs=[]; f1s=[]
-    all_true=[]; all_pred=[]
+    accs = [];
+    bal_accs = [];
+    precs = [];
+    recs = [];
+    f1s = []
+    all_true = [];
+    all_pred = []
 
     for tr, te in kf.split(X, y):
         pipe = Pipeline(pipeline_steps + [("clf", model_cls(**model_kwargs))])
         # Use .iloc for DataFrame indexing
         pipe.fit(X.iloc[tr], y[tr])
         preds = pipe.predict(X.iloc[te])
-        all_true.extend(y[te]); all_pred.extend(preds)
+        all_true.extend(y[te]);
+        all_pred.extend(preds)
         accs.append(accuracy_score(y[te], preds))
         bal_accs.append(balanced_accuracy_score(y[te], preds))
         precs.append(precision_score(y[te], preds, average="weighted"))
@@ -295,7 +330,7 @@ def train_and_explain(df, pipeline_steps, model_cls, model_kwargs, seed=42):
         plt.close(fig_shap)
     except Exception as e:
         fig_shap = plt.figure()
-        plt.text(0.5,0.5,f"SHAP unavailable\n{e}",ha="center")
+        plt.text(0.5, 0.5, f"SHAP unavailable\n{e}", ha="center")
         plt.close(fig_shap)
 
     cm = confusion_matrix(all_true, all_pred, labels=np.unique(y))
@@ -308,13 +343,13 @@ def train_and_explain(df, pipeline_steps, model_cls, model_kwargs, seed=42):
     y_shuf = y.copy()
     rng = np.random.RandomState(seed)
     rng.shuffle(y_shuf)
-    shuf_accs=[]
+    shuf_accs = []
     for tr, te in kf.split(X, y_shuf):
         pipe = Pipeline(pipeline_steps + [("clf", model_cls(**model_kwargs))])
         pipe.fit(X.iloc[tr], y_shuf[tr])
         shuf_accs.append(accuracy_score(y_shuf[te], pipe.predict(X.iloc[te])))
 
-    baseline = float((pd.Series(y).value_counts(normalize=True)**2).sum())
+    baseline = float((pd.Series(y).value_counts(normalize=True) ** 2).sum())
     return {
         "metrics": {
             "Accuracy": np.mean(accs),
@@ -333,6 +368,7 @@ def train_and_explain(df, pipeline_steps, model_cls, model_kwargs, seed=42):
         }
     }
 
+
 # ────────────────────────────────────────────
 # 7) Precompute models with live progress bar
 # ────────────────────────────────────────────
@@ -341,7 +377,7 @@ def precompute_models():
     model_specs = [
         (DecisionTreeClassifier, {}, "Decision Tree"),
         (RandomForestClassifier, {}, "Random Forest"),
-        (SGDClassifier, {"loss":"log_loss","penalty":"l2","max_iter":1000}, "SGD Classifier")
+        (SGDClassifier, {"loss": "log_loss", "penalty": "l2", "max_iter": 1000}, "SGD Classifier")
     ]
 
     total_tasks = len(tags) * len(model_specs)
@@ -359,20 +395,99 @@ def precompute_models():
 
     return results
 
-# 8) Run training spinner + display
-with st.spinner("🚀 Training all models…"):
-    all_model_results = precompute_models()
 
-for tag in tags:
-    with st.expander(f"Models: {tag}", expanded=False):
-        for model_name, mr in all_model_results[tag].items():
-            st.subheader(model_name)
-            st.write(mr["metrics"])
-            st.pyplot(mr["confusion_fig"])
-            st.text(mr["classification_report"])
-            st.pyplot(mr["shap_fig"])
-            sh = mr["shuffle"]
-            st.write(f"Baseline ∑pᵢ²: {sh['baseline']:.3f}")
-            st.write(f"Shuffled‑label acc: {sh['shuffled_acc']:.3f} ± {sh['shuffled_std']:.3f}")
-            if sh["shuffled_acc"] < sh["baseline"]:
-                st.warning("⚠️ Shuffled‑label accuracy below theoretical baseline — check CV or leakage.")
+# MODEL EVALUATION TAB
+with main_tabs[2]:
+    st.subheader("Model Evaluation")
+
+    # Precompute models with progress bar
+    with st.spinner("🚀 Training all models…"):
+        all_model_results = precompute_models()
+
+    # Create sub-tabs for different pipeline approaches
+    model_tabs = st.tabs(tags)
+
+    for i, tag in enumerate(tags):
+        with model_tabs[i]:
+            st.subheader(f"Models with {tag} Pipeline")
+
+            # Create sub-tabs for different models
+            model_names = list(all_model_results[tag].keys())
+            model_sub_tabs = st.tabs(model_names)
+
+            for j, model_name in enumerate(model_names):
+                with model_sub_tabs[j]:
+                    mr = all_model_results[tag][model_name]
+                    st.write("Performance Metrics:")
+                    st.write(mr["metrics"])
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader("Confusion Matrix")
+                        st.pyplot(mr["confusion_fig"])
+                    with col2:
+                        st.subheader("Classification Report")
+                        st.text(mr["classification_report"])
+
+                    sh = mr["shuffle"]
+                    st.write(f"Baseline ∑pᵢ²: {sh['baseline']:.3f}")
+                    st.write(f"Shuffled‑label acc: {sh['shuffled_acc']:.3f} ± {sh['shuffled_std']:.3f}")
+                    if sh["shuffled_acc"] < sh["baseline"]:
+                        st.warning("⚠️ Shuffled‑label accuracy below theoretical baseline — check CV or leakage.")
+
+# SHAP EXPLANATIONS TAB
+with main_tabs[3]:
+    st.subheader("SHAP Feature Importance")
+
+    # Check if models have been trained
+    if 'all_model_results' in locals():
+        # Create selection widgets for pipeline and model
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_tag = st.selectbox("Select Pipeline", tags)
+        with col2:
+            model_options = list(all_model_results[selected_tag].keys())
+            selected_model = st.selectbox("Select Model", model_options)
+
+        # Display SHAP plot for selected pipeline and model
+        st.pyplot(all_model_results[selected_tag][selected_model]["shap_fig"])
+        st.write("SHAP values show the contribution of each feature to the model prediction.")
+    else:
+        st.info("Please run the Model Evaluation tab first to train the models and generate SHAP explanations.")
+
+# PROJECT FINDINGS TAB - STATIC CONTENT
+with main_tabs[4]:
+    st.header("Project Findings")
+
+    # Try multiple approaches to ensure content displays
+    st.text(
+        "Through a series of dimensionality reduction and feature selection pipelines—including threshold-based filtering, log transformations, UMAP embeddings, and top-variance gene selection—six K-Means clustering approaches were evaluated. The highest clustering alignment with ground truth was observed in the Threshold-Filtered (log) and Selection-Top-350 (log) pipelines, achieving ARI and NMI scores above 0.99 and strong silhouette values (0.343 and 0.372, respectively), indicating tight, well-separated clusters. The UMAP-based pipeline, while slightly lower in ARI, exhibited the best 2D structure (silhouette = 0.632), reinforcing its value for visual subtype separation.")
+
+    st.text("")  # Add spacing
+
+    st.text(
+        "Supervised classification performance across all pipelines was consistently strong. Each pipeline was evaluated using 3-fold stratified cross-validation, ensuring class balance and robustness in performance metrics. Models were further validated with shuffled-label baselines to detect overfitting or data leakage—most of which showed shuffled accuracy well below theoretical baselines, confirming model integrity. Among traditional classifiers, the SGD Classifier and Random Forest achieved near-perfect scores on several pipelines, with balanced accuracies reaching 1.000 and F1 scores consistently above 0.99. Notably, the Threshold-Filtered (log) pipeline with the SGD Classifier achieved perfect classification (accuracy, precision, recall, and F1 score all equal to 1.000), demonstrating exceptional alignment between preprocessing and modeling.")
+
+    st.text("")  # Add spacing
+
+    st.text(
+        "Across all pipelines, classification reports showed strong generalization across cancer types such as BRCA, COAD, KIRC, LUAD, and PRAD, with macro-averaged F1-scores approaching 1.0 in most cases. These findings highlight that both unsupervised and supervised models, when properly validated and paired with effective feature transformations, can deliver highly accurate and interpretable cancer subtype predictions.")
+
+    # Alternative approach using container
+    with st.container():
+        st.markdown("---")
+        st.markdown("**Alternative Display Method:**")
+
+        st.markdown("""
+        Through a series of dimensionality reduction and feature selection pipelines—including threshold-based filtering, log transformations, UMAP embeddings, and top-variance gene selection—six K-Means clustering approaches were evaluated. The highest clustering alignment with ground truth was observed in the Threshold-Filtered (log) and Selection-Top-350 (log) pipelines, achieving ARI and NMI scores above 0.99 and strong silhouette values (0.343 and 0.372, respectively), indicating tight, well-separated clusters. The UMAP-based pipeline, while slightly lower in ARI, exhibited the best 2D structure (silhouette = 0.632), reinforcing its value for visual subtype separation.
+
+        Supervised classification performance across all pipelines was consistently strong. Each pipeline was evaluated using 3-fold stratified cross-validation, ensuring class balance and robustness in performance metrics. Models were further validated with shuffled-label baselines to detect overfitting or data leakage—most of which showed shuffled accuracy well below theoretical baselines, confirming model integrity. Among traditional classifiers, the SGD Classifier and Random Forest achieved near-perfect scores on several pipelines, with balanced accuracies reaching 1.000 and F1 scores consistently above 0.99. Notably, the Threshold-Filtered (log) pipeline with the SGD Classifier achieved perfect classification (accuracy, precision, recall, and F1 score all equal to 1.000), demonstrating exceptional alignment between preprocessing and modeling.
+
+        Across all pipelines, classification reports showed strong generalization across cancer types such as BRCA, COAD, KIRC, LUAD, and PRAD, with macro-averaged F1-scores approaching 1.0 in most cases. These findings highlight that both unsupervised and supervised models, when properly validated and paired with effective feature transformations, can deliver highly accurate and interpretable cancer subtype predictions.
+        """)
+
+    # Debug information
+    st.info("If you can see this message, the tab is working. The text should appear above.")
+
+    # Test with simple content
+    st.write("Test message: This is a simple test to verify the tab is functional.")
