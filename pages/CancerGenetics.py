@@ -3,8 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import umap.umap_ as umap
-
+import os
 from matplotlib.lines import Line2D
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler, FunctionTransformer
@@ -22,54 +21,12 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
 from sklearn.pipeline import Pipeline
+from custom_transformers import UMAPTransformer, TopKVarianceSelector
 import shap
-
-
-# ────────────────────────────────────────────
-# 1) Custom Transformer: Top‑K Variance Selector
-# ────────────────────────────────────────────
-class TopKVarianceSelector(BaseEstimator, TransformerMixin):
-    def __init__(self, k=350):
-        self.k = k
-
-    def fit(self, X, y=None):
-        self.variances_ = np.var(X, axis=0)
-        self.topk_idx_ = np.argsort(self.variances_)[-self.k:]
-        return self
-
-    def transform(self, X):
-        return X[:, self.topk_idx_]
-
-    def get_feature_names_out(self, input_features=None):
-        return np.array(input_features)[self.topk_idx_]
-
+import joblib
 
 # ────────────────────────────────────────────
-# 1b) Custom Transformer: UMAP (fits per fold)
-# ────────────────────────────────────────────
-class UMAPTransformer(BaseEstimator, TransformerMixin):
-    def __init__(self, n_components=100, n_neighbors=5, min_dist=1, random_state=42):
-        self.n_components = n_components
-        self.n_neighbors = n_neighbors
-        self.min_dist = min_dist
-        self.random_state = random_state
-
-    def fit(self, X, y=None):
-        self.umap_ = umap.UMAP(
-            n_components=self.n_components,
-            n_neighbors=self.n_neighbors,
-            min_dist=self.min_dist,
-            random_state=self.random_state
-        )
-        self.umap_.fit(X)
-        return self
-
-    def transform(self, X):
-        return self.umap_.transform(X)
-
-
-# ────────────────────────────────────────────
-# 2) Plot helpers (silhouette removed from evaluate_clusters)
+# Plot helpers (silhouette removed from evaluate_clusters)
 # ────────────────────────────────────────────
 def evaluate_clusters(name, X, cluster_labels, true_labels):
     from sklearn.metrics import (
@@ -87,7 +44,6 @@ def evaluate_clusters(name, X, cluster_labels, true_labels):
     }
     st.write({k: f"{v:.3f}" for k, v in scores.items()})
     # silhouette handled in plot_step
-
 
 def plot_step(name, X2d, clust, Xfull, labels):
     col1, col2 = st.columns(2)
@@ -120,9 +76,8 @@ def plot_step(name, X2d, clust, Xfull, labels):
     elif Xfull.shape[1] >= 2:
         st.write(f"Silhouette: {silhouette_score(Xfull, clust):.3f}")
 
-
 # ────────────────────────────────────────────
-# 3) Load & merge data (cached)
+# Load & merge data (cached)
 # ────────────────────────────────────────────
 @st.cache_data
 def load_data():
@@ -130,7 +85,6 @@ def load_data():
     df_y = pd.read_csv("Data/cancer_subtype_labels.csv")
     df = pd.merge(df_x, df_y).drop(df_x.columns[0], axis=1)
     return df
-
 
 # Common list of tags
 tags = [
@@ -141,10 +95,16 @@ tags = [
     "Selection-Top-350",
     "Selection-Top-350 (log)"
 ]
+model_dir = "resources/CancerGeneticsModels"
 
+model_specs = [
+    (DecisionTreeClassifier, {}, "Decision Tree"),
+    (RandomForestClassifier, {}, "Random Forest"),
+    (SGDClassifier, {"loss": "log_loss", "penalty": "l2", "max_iter": 1000}, "SGD Classifier")
+]
 
 # ────────────────────────────────────────────
-# 4) Compute EDA transforms per‑tag (cached)
+# Compute EDA transforms per‑tag (cached)
 # ────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def compute_eda(tag: str):
@@ -170,7 +130,6 @@ def compute_eda(tag: str):
         Xlog = np.log1p(X)
         sel = VarianceThreshold(0.5).fit(Xlog)
         Xf = Xlog.loc[:, sel.get_support()]
-        # Removed StandardScaler here:
         Xs = Xf.values
         X2d = PCA(n_components=2, random_state=42).fit_transform(Xs)
         cl = KMeans(n_clusters=5, random_state=42).fit_predict(Xs)
@@ -178,8 +137,8 @@ def compute_eda(tag: str):
 
     if tag == "Filtered-UMAP":
         Xs = StandardScaler().fit_transform(X)
-        Emb = umap.UMAP(
-            n_components=100, n_neighbors=5, min_dist=1, random_state=42
+        Emb = UMAPTransformer(
+            n_components=100, n_neighbors=5, min_dist=1.0, random_state=42
         ).fit_transform(Xs)
         X2d = Emb[:, :2]
         cl = KMeans(n_clusters=5, random_state=42).fit_predict(Emb)
@@ -197,7 +156,6 @@ def compute_eda(tag: str):
         Xlog = np.log1p(X)
         top = Xlog.var().sort_values(ascending=False).head(350).index
         Xf = Xlog[top]
-        # Removed StandardScaler here:
         Xs = Xf.values
         X2d = PCA(n_components=2, random_state=42).fit_transform(Xs)
         cl = KMeans(n_clusters=5, random_state=42).fit_predict(Xs)
@@ -205,13 +163,10 @@ def compute_eda(tag: str):
 
     raise ValueError(f"Unknown tag {tag}")
 
-
 # ────────────────────────────────────────────
-# 5) Main page layout with tabs
-# ────────────────────────────────────────────
+# Main page layout with tabs
 st.title("Cancer Subtype Analysis: EDA + Modeling")
 
-# Create main tabs
 main_tabs = st.tabs(
     ["Data Overview", "Clustering Analysis", "Model Evaluation", "SHAP Explanations", "Project Findings"])
 
@@ -236,19 +191,15 @@ with main_tabs[0]:
 # CLUSTERING ANALYSIS TAB
 with main_tabs[1]:
     st.subheader("Clustering Analysis")
-
-    # Create sub-tabs for different clustering approaches
     clustering_tabs = st.tabs(tags)
-
     for i, tag in enumerate(tags):
         with clustering_tabs[i]:
             st.subheader(f"Pipeline: {tag}")
             X2d, clusters, Xfull, labels = compute_eda(tag)
             plot_step(tag, X2d, clusters, Xfull, labels)
 
-
 # ────────────────────────────────────────────
-# 6) Modeling pipelines & SHAP
+# Modeling pipelines & model IO helpers
 # ────────────────────────────────────────────
 def get_pipeline(tag):
     if tag == "Original":
@@ -256,7 +207,6 @@ def get_pipeline(tag):
     if tag == "Threshold-Filtered":
         return [("scaler", StandardScaler()), ("variance", VarianceThreshold(0.5))]
     if tag == "Threshold-Filtered (log)":
-        # REMOVED StandardScaler here:
         return [
             ("log", FunctionTransformer(np.log1p, validate=True)),
             ("variance", VarianceThreshold(0.5)),
@@ -264,7 +214,6 @@ def get_pipeline(tag):
     if tag == "Selection-Top-350":
         return [("scaler", StandardScaler()), ("topk", TopKVarianceSelector(k=350))]
     if tag == "Selection-Top-350 (log)":
-        # REMOVED StandardScaler here:
         return [
             ("log", FunctionTransformer(np.log1p, validate=True)),
             ("topk", TopKVarianceSelector(k=350)),
@@ -273,33 +222,41 @@ def get_pipeline(tag):
         return [
             ("scaler", StandardScaler()),
             ("umap", UMAPTransformer(
-                n_components=100, n_neighbors=5, min_dist=1, random_state=42
+                n_components=100, n_neighbors=5, min_dist=1.0, random_state=42
             ))
         ]
     raise ValueError(f"Unknown tag {tag}")
 
+def get_model_path(tag, model_name):
+    tag_dir = os.path.join(model_dir, tag)
+    if not os.path.exists(tag_dir):
+        os.makedirs(tag_dir)
+    return os.path.join(tag_dir, f"{model_name}.joblib")
 
-def train_and_explain(df, pipeline_steps, model_cls, model_kwargs, seed=42):
-    # Keep X as a DataFrame to preserve column (gene) names
+def get_metrics_path(tag, model_name):
+    tag_dir = os.path.join(model_dir, tag)
+    if not os.path.exists(tag_dir):
+        os.makedirs(tag_dir)
+    return os.path.join(tag_dir, f"{model_name}_metrics.joblib")
+
+def fit_and_store_model(df, pipeline_steps, model_cls, model_kwargs, tag, model_name, seed=42):
     X = df.drop(columns="Class")
     y = df["Class"].values
     orig_feats = X.columns.to_list()
     kf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
-
-    accs = [];
-    bal_accs = [];
-    precs = [];
-    recs = [];
+    accs = []
+    bal_accs = []
+    precs = []
+    recs = []
     f1s = []
-    all_true = [];
+    all_true = []
     all_pred = []
 
     for tr, te in kf.split(X, y):
         pipe = Pipeline(pipeline_steps + [("clf", model_cls(**model_kwargs))])
-        # Use .iloc for DataFrame indexing
         pipe.fit(X.iloc[tr], y[tr])
         preds = pipe.predict(X.iloc[te])
-        all_true.extend(y[te]);
+        all_true.extend(y[te])
         all_pred.extend(preds)
         accs.append(accuracy_score(y[te], preds))
         bal_accs.append(balanced_accuracy_score(y[te], preds))
@@ -307,39 +264,16 @@ def train_and_explain(df, pipeline_steps, model_cls, model_kwargs, seed=42):
         recs.append(recall_score(y[te], preds, average="weighted"))
         f1s.append(f1_score(y[te], preds, average="weighted"))
 
+    # Train final model on all data
     full_pipe = Pipeline(pipeline_steps + [("clf", model_cls(**model_kwargs))])
     full_pipe.fit(X, y)
 
-    preproc = full_pipe[:-1]
-    try:
-        feat_names = preproc.get_feature_names_out(orig_feats)
-    except:
-        feat_names = orig_feats
+    # Save model pipeline to disk
+    joblib.dump(full_pipe, get_model_path(tag, model_name))
 
-    try:
-        explainer = shap.Explainer(full_pipe.named_steps["clf"], preproc.transform(X))
-        sv = explainer(preproc.transform(X))
-        fig_shap = plt.figure()
-        shap.summary_plot(
-            sv,
-            features=preproc.transform(X),
-            feature_names=feat_names,
-            class_names=full_pipe.named_steps["clf"].classes_,
-            plot_type="bar", max_display=20, show=False
-        )
-        plt.close(fig_shap)
-    except Exception as e:
-        fig_shap = plt.figure()
-        plt.text(0.5, 0.5, f"SHAP unavailable\n{e}", ha="center")
-        plt.close(fig_shap)
-
+    # Save metrics to disk
     cm = confusion_matrix(all_true, all_pred, labels=np.unique(y))
-    fig_cm, ax_cm = plt.subplots(figsize=(6, 5))
-    ConfusionMatrixDisplay(cm, display_labels=np.unique(y)).plot(
-        ax=ax_cm, cmap="Blues", xticks_rotation=45
-    )
-    plt.close(fig_cm)
-
+    report = classification_report(all_true, all_pred)
     y_shuf = y.copy()
     rng = np.random.RandomState(seed)
     rng.shuffle(y_shuf)
@@ -348,9 +282,8 @@ def train_and_explain(df, pipeline_steps, model_cls, model_kwargs, seed=42):
         pipe = Pipeline(pipeline_steps + [("clf", model_cls(**model_kwargs))])
         pipe.fit(X.iloc[tr], y_shuf[tr])
         shuf_accs.append(accuracy_score(y_shuf[te], pipe.predict(X.iloc[te])))
-
     baseline = float((pd.Series(y).value_counts(normalize=True) ** 2).sum())
-    return {
+    metrics = {
         "metrics": {
             "Accuracy": np.mean(accs),
             "Balanced Accuracy": np.mean(bal_accs),
@@ -358,104 +291,134 @@ def train_and_explain(df, pipeline_steps, model_cls, model_kwargs, seed=42):
             "Recall": np.mean(recs),
             "F1 Score": np.mean(f1s),
         },
-        "confusion_fig": fig_cm,
-        "classification_report": classification_report(all_true, all_pred),
-        "shap_fig": fig_shap,
+        "confusion_matrix": cm,
+        "classification_report": report,
         "shuffle": {
             "baseline": baseline,
             "shuffled_acc": np.mean(shuf_accs),
             "shuffled_std": np.std(shuf_accs)
         }
     }
+    joblib.dump(metrics, get_metrics_path(tag, model_name))
 
+def load_model_pipeline(tag, model_name):
+    path = get_model_path(tag, model_name)
+    if not os.path.exists(path):
+        return None
+    return joblib.load(path)
+
+def load_model_metrics(tag, model_name):
+    path = get_metrics_path(tag, model_name)
+    if not os.path.exists(path):
+        return None
+    return joblib.load(path)
 
 # ────────────────────────────────────────────
-# 7) Precompute models with live progress bar
+# Model Evaluation Tab: train if needed, then use stored
 # ────────────────────────────────────────────
-def precompute_models():
-    df = load_data()
-    model_specs = [
-        (DecisionTreeClassifier, {}, "Decision Tree"),
-        (RandomForestClassifier, {}, "Random Forest"),
-        (SGDClassifier, {"loss": "log_loss", "penalty": "l2", "max_iter": 1000}, "SGD Classifier")
-    ]
-
-    total_tasks = len(tags) * len(model_specs)
-    progress = st.progress(0)
-    count = 0
-    results = {}
-
-    for tag in tags:
-        steps = get_pipeline(tag)
-        results[tag] = {}
-        for cls, kw, name in model_specs:
-            results[tag][name] = train_and_explain(df, steps, cls, kw)
-            count += 1
-            progress.progress(count / total_tasks)
-
-    return results
-
-
-# MODEL EVALUATION TAB
 with main_tabs[2]:
     st.subheader("Model Evaluation")
 
-    # Precompute models with progress bar
-    with st.spinner("🚀 Training all models…"):
-        all_model_results = precompute_models()
+    df = load_data()
+    # Model training with progress bar if missing, otherwise use existing
+    total_tasks = len(tags) * len(model_specs)
+    progress = st.progress(0)
+    count = 0
+    for tag in tags:
+        steps = get_pipeline(tag)
+        for cls, kw, model_name in model_specs:
+            if not os.path.exists(get_model_path(tag, model_name)):
+                with st.spinner(f"Training {model_name} for {tag}..."):
+                    fit_and_store_model(df, steps, cls, kw, tag, model_name)
+            count += 1
+            progress.progress(count / total_tasks)
 
-    # Create sub-tabs for different pipeline approaches
+    # UI: Tabs for each pipeline
     model_tabs = st.tabs(tags)
-
     for i, tag in enumerate(tags):
         with model_tabs[i]:
             st.subheader(f"Models with {tag} Pipeline")
-
-            # Create sub-tabs for different models
-            model_names = list(all_model_results[tag].keys())
+            model_names = [m[2] for m in model_specs]
             model_sub_tabs = st.tabs(model_names)
-
             for j, model_name in enumerate(model_names):
                 with model_sub_tabs[j]:
-                    mr = all_model_results[tag][model_name]
+                    metrics = load_model_metrics(tag, model_name)
+                    if metrics is None:
+                        st.error("Model metrics not found, please retrain.")
+                        continue
                     st.write("Performance Metrics:")
-                    st.write(mr["metrics"])
+                    st.write(metrics["metrics"])
 
                     col1, col2 = st.columns(2)
                     with col1:
                         st.subheader("Confusion Matrix")
-                        st.pyplot(mr["confusion_fig"])
+                        cm = metrics["confusion_matrix"]
+                        labels = np.unique(df["Class"])
+                        fig_cm, ax_cm = plt.subplots(figsize=(6, 5))
+                        ConfusionMatrixDisplay(cm, display_labels=labels).plot(
+                            ax=ax_cm, cmap="Blues", xticks_rotation=45
+                        )
+                        plt.close(fig_cm)
+                        st.pyplot(fig_cm)
                     with col2:
                         st.subheader("Classification Report")
-                        st.text(mr["classification_report"])
+                        st.text(metrics["classification_report"])
 
-                    sh = mr["shuffle"]
+                    sh = metrics["shuffle"]
                     st.write(f"Baseline ∑pᵢ²: {sh['baseline']:.3f}")
                     st.write(f"Shuffled‑label acc: {sh['shuffled_acc']:.3f} ± {sh['shuffled_std']:.3f}")
-                    if sh["shuffled_acc"] < sh["baseline"]:
+                    if sh["shuffled_acc"] < sh["baseline"] - 0.01:
                         st.warning("⚠️ Shuffled‑label accuracy below theoretical baseline — check CV or leakage.")
 
-# SHAP EXPLANATIONS TAB
+# ────────────────────────────────────────────
+# SHAP Explanations Tab: always use stored models
+# ────────────────────────────────────────────
 with main_tabs[3]:
     st.subheader("SHAP Feature Importance")
+    col1, col2 = st.columns(2)
+    with col1:
+        selected_tag = st.selectbox("Select Pipeline", tags)
+    with col2:
+        model_names = [m[2] for m in model_specs]
+        selected_model = st.selectbox("Select Model", model_names)
 
-    # Check if models have been trained
-    if 'all_model_results' in locals():
-        # Create selection widgets for pipeline and model
-        col1, col2 = st.columns(2)
-        with col1:
-            selected_tag = st.selectbox("Select Pipeline", tags)
-        with col2:
-            model_options = list(all_model_results[selected_tag].keys())
-            selected_model = st.selectbox("Select Model", model_options)
-
-        # Display SHAP plot for selected pipeline and model
-        st.pyplot(all_model_results[selected_tag][selected_model]["shap_fig"])
-        st.write("SHAP values show the contribution of each feature to the model prediction.")
+    df = load_data()
+    model_pipe = load_model_pipeline(selected_tag, selected_model)
+    if model_pipe is None:
+        st.info("Model not found. Please visit the Model Evaluation tab to train and store models first.")
     else:
-        st.info("Please run the Model Evaluation tab first to train the models and generate SHAP explanations.")
+        X = df.drop(columns="Class")
+        y = df["Class"].values
+        preproc = model_pipe[:-1]
+        clf = model_pipe.named_steps["clf"]
+        orig_feats = X.columns.to_list()
 
+        feat_names = orig_feats
+
+        try:
+            explainer = shap.Explainer(clf, preproc.transform(X))
+            sv = explainer(preproc.transform(X))
+            fig_shap = plt.figure()
+            shap.summary_plot(
+                sv,
+                features=preproc.transform(X),
+                feature_names=feat_names,
+                class_names=clf.classes_,
+                plot_type="bar", max_display=20, show=False
+            )
+            plt.close(fig_shap)
+            st.pyplot(fig_shap)
+            st.write("SHAP values show the contribution of each feature to the model prediction.")
+        except Exception as e:
+            fig_shap = plt.figure()
+            plt.text(0.5, 0.5, f"SHAP unavailable\n{e}", ha="center")
+            plt.close(fig_shap)
+            st.pyplot(fig_shap)
+            st.info("SHAP explanation unavailable for this model/feature set.")
+
+# ────────────────────────────────────────────
 # PROJECT FINDINGS TAB - STATIC CONTENT
+# ────────────────────────────────────────────
 with main_tabs[4]:
     st.header("Project Findings")
 
