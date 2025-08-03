@@ -137,6 +137,7 @@ def trainModel():
     # Print metrics for cleaned data
     acc_cln = accuracy_score(y1_test_cln, y1_pred_cln)
 
+    st.write("### Random Forest with OverSampling & ENN Cleaning")
     st.write(f"Accuracy: {acc_cln:.3f}")
 
     ### Store session state for interactive prediction
