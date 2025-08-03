@@ -30,10 +30,12 @@ from sklearn.metrics import (
 st.set_page_config(
     page_title="Breast Cancer Prognosis",
     page_icon=None,
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="expanded",
     menu_items=None,
 )
+
+
 
 # Load the dataset
 file_path = 'Data/Breast_Cancer.csv'
@@ -80,6 +82,10 @@ def trainModel():
             return 8
 
     pdataS['Survival Class'] = pdataS['Survival Months'].apply(categorize_survival)
+
+    # Remove "Status" if present so it's not used as a feature
+    if 'Status' in pdataS.columns:
+        pdataS = pdataS.drop(columns=['Status'])
 
     # Define features (X1) and target (y1) for the classification task
     X1 = pdataS.drop(['Survival Months', 'Survival Class'], axis=1)
@@ -137,8 +143,12 @@ def trainModel():
     # Print metrics for cleaned data
     acc_cln = accuracy_score(y1_test_cln, y1_pred_cln)
 
-    st.write("### Random Forest with OverSampling & ENN Cleaning")
-    st.write(f"Accuracy: {acc_cln:.3f}")
+    st.session_state["model_name"] = modelRFC_cln.__class__.__name__
+    st.session_state["model_accuracy"] = acc_cln
+
+
+    # st.write("### Random Forest with OverSampling & ENN Cleaning")
+    # st.write(f"Accuracy: {acc_cln:.3f}")
 
     ### Store session state for interactive prediction
     st.session_state["clf"] = modelRFC_cln
@@ -155,8 +165,30 @@ def trainModel():
     st.session_state["y_train"] = y1_train_cln.reset_index(drop=True)
 
 
+    # compactify form vertically
+    st.markdown(
+        """
+        <style>
+        /* Reduce spacing between form rows and shrink labels */
+        div[data-testid="stForm"] > div {
+            gap: 4px; /* less vertical gap between groups */
+        }
+        .stSelectbox > div, .stNumberInput > div, .stTextInput > div {
+            margin-bottom: 2px;
+        }
+        label {
+            font-size: 0.85rem;
+            margin-bottom: 2px;
+        }
+        .stButton>button {
+            padding: 6px 12px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     ### Interactive Risk Predictor
-    st.markdown("---")
     st.subheader("🔮 Interactive: Predicted Risk Level")
 
     clf = st.session_state["clf"]
@@ -165,58 +197,117 @@ def trainModel():
     raw = st.session_state["raw_data"]
     encoded = st.session_state["encoded_data"]
 
-    # 1) Load a random sample BEFORE building the form
-    if st.button("🔃 Load Random Sample"):
-        # draw a random index
+    # Callback to load random sample into session_state before form instantiation
+    def load_random_sample():
         idx = np.random.randint(len(st.session_state["X_test"]))
         sample = st.session_state["X_test"].iloc[idx]
-        # decode & store into session_state
         for col in feature_cols:
             if col in encs:
                 st.session_state[col] = encs[col].inverse_transform([int(sample[col])])[0]
             else:
                 st.session_state[col] = float(sample[col])
-        # display the index
-        st.success(f"🔍 Loaded random patient at index **{idx}**. Now click ▶️ Predict Risk Level.")
+        st.session_state["loaded_idx"] = idx
 
+    # Layout: left = input form, right = sample & prediction + result
+    left_col, right_col = st.columns([2, 2.5])  # right slightly wider
 
-    # 2) Now build the form, using session_state[col] as your defaults
-    with st.form("risk_form"):
+        # LEFT: Input form (no form wrapper / submit button)
+    with left_col:
         st.write("Enter patient characteristics:")
-        for col in feature_cols:
-            if col in encs:
-                opts = list(encs[col].classes_)
-                default = st.session_state.get(col, raw[col].mode().iloc[0])
-                st.selectbox(col, opts, index=opts.index(default), key=col)
+        col1, col2 = st.columns(2)
+        for i, col in enumerate(feature_cols):
+            target = col1 if i % 2 == 0 else col2
+            with target:
+                if col in encs:
+                    opts = list(encs[col].classes_)
+                    default_raw = raw[col].mode().iloc[0]
+                    default = st.session_state.get(col, default_raw)
+                    try:
+                        default_index = opts.index(default)
+                    except ValueError:
+                        default_index = 0
+                    st.selectbox(col, opts, index=default_index, key=col)
+                else:
+                    cmin, cmax = float(encoded[col].min()), float(encoded[col].max())
+                    cmed = float(encoded[col].median())
+                    default = st.session_state.get(col, cmed)
+                    st.number_input(col, min_value=cmin, max_value=cmax, value=default, key=col)
+
+    # RIGHT: Load sample, prediction buttons, and result
+    with right_col:
+        st.write("### ▶️ Prediction")
+        btn_col1, btn_col2 = st.columns([1, 1])
+        with btn_col1:
+            st.button("🔃 Load Random Sample", on_click=load_random_sample)
+        with btn_col2:
+            do_predict = st.button("Predict Risk Level")
+
+        # Show feedback if sample was loaded
+        if "loaded_idx" in st.session_state:
+            st.success(f"🔍 Loaded random patient at index **{st.session_state['loaded_idx']}**. Now click ▶️ Predict Risk Level.")
+
+        if do_predict:
+            user_inputs = {}
+            for col in feature_cols:
+                if col in encs:
+                    user_inputs[col] = encs[col].transform([st.session_state[col]])[0]
+                else:
+                    user_inputs[col] = st.session_state[col]
+
+            X_new = pd.DataFrame([user_inputs])[feature_cols]
+            pred = clf.predict(X_new)[0]
+
+            # risk tier
+            risk = "HIGH" if pred <= 2 else "MEDIUM" if pred <= 5 else "LOW"
+
+            # survival estimates
+            class_to_midpoint = {
+                0: 0.5, 1: 1.5, 2: 2.5, 3: 3.5,
+                4: 4.5, 5: 5.5, 6: 6.5, 7: 7.5, 8: 9.0,
+            }
+            class_to_range = {
+                0: "<1 year", 1: "1–2 years", 2: "2–3 years", 3: "3–4 years",
+                4: "4–5 years", 5: "5–6 years", 6: "6–7 years", 7: "7–8 years", 8: "8+ years",
+            }
+            est_years = class_to_midpoint.get(pred, None)
+            range_str = class_to_range.get(pred, "Unknown")
+
+            # Prediction confidence/probability
+            confidence_str = "N/A"
+            if hasattr(clf, "predict_proba"):
+                probs = clf.predict_proba(X_new)[0]
+                pred_prob = probs[pred]
+                confidence_str = f"{pred_prob*100:.1f}%"
+
+            # Header
+            st.write("### Prediction Result")
+
+            # Model info
+            model_name = st.session_state.get("model_name", clf.__class__.__name__)
+            model_acc = st.session_state.get("model_accuracy", None)
+            info_line = f"**Model:** {model_name}"
+            if model_acc is not None:
+                info_line += f"  •  **Test Accuracy:** {model_acc:.3f}"
+            info_line += f"  •  **Confidence:** {confidence_str}"
+            st.markdown(info_line)
+
+            # Risk badge
+            if risk == "HIGH":
+                st.error("🟥 High Risk (< 3 years)")
+            elif risk == "MEDIUM":
+                st.warning("🟧 Medium Risk (3–6 years)")
             else:
-                cmin, cmax = float(encoded[col].min()), float(encoded[col].max())
-                cmed = float(encoded[col].median())
-                default = st.session_state.get(col, cmed)
-                st.number_input(col, min_value=cmin, max_value=cmax, value=default, key=col)
+                st.success("🟩 Low Risk (> 6 years)")
 
-        do_predict = st.form_submit_button("▶️ Predict Risk Level")
-
-    # 3) Prediction logic
-    if do_predict:
-        user_inputs = {}
-        for col in feature_cols:
-            if col in encs:
-                user_inputs[col] = encs[col].transform([st.session_state[col]])[0]
+            # Survival estimate
+            if est_years is not None:
+                st.markdown(f"**Estimated survival:** ~{est_years:.1f} years ({range_str})")
             else:
-                user_inputs[col] = st.session_state[col]
+                st.markdown(f"**Estimated survival range:** {range_str}")
 
-        X_new = pd.DataFrame([user_inputs])[feature_cols]
-        pred = clf.predict(X_new)[0]
-        risk = "HIGH" if pred <= 2 else "MEDIUM" if pred <= 5 else "LOW"
+            st.caption(f"Predicted class index: {pred}")
 
-        st.write("### Prediction Result")
-        if risk == "HIGH":
-            st.error("🟥 High Risk (< 3 years)")
-        elif risk == "MEDIUM":
-            st.warning("🟧 Medium Risk (3–6 years)")
-        else:
-            st.success("🟩 Low Risk (> 6 years)")
-        st.caption(f"Predicted class index: {pred}")
+
 
     st.markdown("---")
     st.subheader("📊 Dataset Sizes")
