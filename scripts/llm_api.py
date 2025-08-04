@@ -4,19 +4,11 @@ import os
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
 class OpenRouterAPI:
-    """
-    OpenRouter API client for generating professional cancer prognosis summaries
-    using the google/gemini-2.0-flash-exp:free model.
-    """
-    
     def __init__(self, api_key: Optional[str] = None):
-        """
-        Initialize the OpenRouter API client.
-        
+        """   
         Args:
             api_key: OpenRouter API key. If None, will try to get from environment variable.
         """
@@ -29,17 +21,17 @@ class OpenRouterAPI:
         
         self.system_prompt = """You are a highly experienced oncology specialist and cancer prognosis expert with extensive knowledge in pathology, cancer staging, and patient care. Your role is to provide professional, compassionate, and medically accurate patient summaries based on pathology report analysis results.
 
-Given the pathology report text and the extracted clinical information (cancer type, TNM staging), you should:
+                            Given the pathology report text and the extracted clinical information (cancer type, TNM staging), you should:
 
-1. Provide a clear, professional summary of the patient's condition
-2. Explain the significance of the TNM staging in understandable terms
-3. Discuss the general prognosis and treatment considerations for this cancer type and stage
-4. Maintain a professional yet compassionate tone appropriate for medical documentation
-5. Include relevant medical terminology while ensuring clarity
-6. Avoid making specific treatment recommendations (defer to treating physician)
-7. Focus on providing educational context about the diagnosis and staging
+                            1. Provide a clear, professional summary of the patient's condition
+                            2. Explain the significance of the TNM staging in understandable terms
+                            3. Discuss the general prognosis and treatment considerations for this cancer type and stage
+                            4. Maintain a professional yet compassionate tone appropriate for medical documentation
+                            5. Include relevant medical terminology while ensuring clarity
+                            6. Avoid making specific treatment recommendations (defer to treating physician)
+                            7. Focus on providing educational context about the diagnosis and staging
 
-Your response should be structured, informative, and suitable for inclusion in a medical report or for patient education purposes. Always emphasize that this analysis is supplementary to clinical judgment and that patients should discuss results with their healthcare team."""
+                            Your response should be structured, informative, and suitable for inclusion in a medical report or for patient education purposes. Always emphasize that this analysis is supplementary to clinical judgment and that patients should discuss results with their healthcare team."""
 
     def generate_prognosis_summary(self, 
                                  pathology_text: str, 
@@ -48,9 +40,7 @@ Your response should be structured, informative, and suitable for inclusion in a
                                  n_stage: str, 
                                  m_stage: str,
                                  confidence_scores: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
-        """
-        Generate a professional cancer prognosis summary using OpenRouter API.
-        
+        """       
         Args:
             pathology_text: The original pathology report text
             cancer_type: Predicted cancer type
@@ -67,26 +57,26 @@ Your response should be structured, informative, and suitable for inclusion in a
         confidence_info = ""
         if confidence_scores:
             confidence_info = f"""
-Prediction Confidence Scores:
-- Cancer Type: {confidence_scores.get('cancer_type', 'N/A'):.1%}
-- T Stage: {confidence_scores.get('t_stage', 'N/A'):.1%}
-- N Stage: {confidence_scores.get('n_stage', 'N/A'):.1%}
-- M Stage: {confidence_scores.get('m_stage', 'N/A'):.1%}
-"""
-        
-        user_message = f"""
-Please provide a professional cancer prognosis summary based on the following clinical analysis:
+                            Prediction Confidence Scores:
+                            - Cancer Type: {confidence_scores.get('cancer_type', 'N/A'):.1%}
+                            - T Stage: {confidence_scores.get('t_stage', 'N/A'):.1%}
+                            - N Stage: {confidence_scores.get('n_stage', 'N/A'):.1%}
+                            - M Stage: {confidence_scores.get('m_stage', 'N/A'):.1%}
+                            """
+            
+            user_message = f"""
+                            Please provide a professional cancer prognosis summary based on the following clinical analysis:
 
-EXTRACTED CLINICAL INFORMATION:
-- Cancer Type: {cancer_type}
-- TNM Staging: T{t_stage}, N{n_stage}, M{m_stage}
-{confidence_info}
+                            EXTRACTED CLINICAL INFORMATION:
+                            - Cancer Type: {cancer_type}
+                            - TNM Staging: T{t_stage}, N{n_stage}, M{m_stage}
+                            {confidence_info}
 
-ORIGINAL PATHOLOGY REPORT:
-{pathology_text}
+                            ORIGINAL PATHOLOGY REPORT:
+                            {pathology_text}
 
-Please generate a comprehensive, professional summary that explains the diagnosis, staging significance, and general prognosis considerations for this patient.
-"""
+                            Please generate a comprehensive, professional summary that explains the diagnosis, staging significance, and general prognosis considerations for this patient.
+                            """
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -105,7 +95,7 @@ Please generate a comprehensive, professional summary that explains the diagnosi
                     "content": user_message
                 }
             ],
-            "temperature": 0.3,  # Lower temperature for more consistent medical responses
+            "temperature": 0.1,
             "max_tokens": 1500,
             "top_p": 0.9
         }
@@ -159,12 +149,6 @@ Please generate a comprehensive, professional summary that explains the diagnosi
             }
 
     def test_connection(self) -> Dict[str, Any]:
-        """
-        Test the connection to OpenRouter API.
-        
-        Returns:
-            Dictionary indicating success/failure of connection test
-        """
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -206,8 +190,6 @@ Please generate a comprehensive, professional summary that explains the diagnosi
 def create_prognosis_summary(pathology_text: str, 
                            clinical_results: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Convenience function to generate prognosis summary from clinical results.
-    
     Args:
         pathology_text: Original pathology report text
         clinical_results: Results from ClinicalBERT analysis (from run_clinicalbert_inference)
@@ -216,7 +198,7 @@ def create_prognosis_summary(pathology_text: str,
         Dictionary containing the generated summary and metadata
     """
     try:
-        # Initialize the API client (will load API key from environment)
+        # Initialize the API client
         api_client = OpenRouterAPI()
         
         # Extract clinical information from results
@@ -257,7 +239,6 @@ def create_prognosis_summary(pathology_text: str,
 
 # Example usage and testing
 if __name__ == "__main__":
-    # Example of how to use the API
     sample_clinical_results = {
         'cancer_type': {'value': 'BRCA', 'confidence': 0.95},
         'tnm_staging': {
@@ -267,9 +248,9 @@ if __name__ == "__main__":
         }
     }
     
-    sample_pathology_text = "Sample pathology report text here..."
+    sample_pathology_text = "..."
     
-    # Test the API (requires OPENROUTER_API_KEY environment variable)
+    # Test the API
     try:
         result = create_prognosis_summary(sample_pathology_text, sample_clinical_results)
         if result['success']:
