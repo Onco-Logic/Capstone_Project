@@ -21,7 +21,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
 from sklearn.pipeline import Pipeline
-from custom_transformers import UMAPTransformer, TopKVarianceSelector
+from scripts.custom_transformers import UMAPTransformer, TopKVarianceSelector
 import shap
 import joblib
 
