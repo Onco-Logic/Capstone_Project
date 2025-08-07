@@ -124,30 +124,36 @@ def trainModels():
     modelRFC_raw = RandomForestClassifier(random_state=42)
     modelXGB_raw = XGBClassifier(random_state=42, eval_metric='logloss')
     modelCAT_raw = CatBoostClassifier(random_state=42, verbose=0)
+    modelLGBM_raw = LGBMClassifier(random_state=42, verbose=0)
     y_pred_RFC_raw = modelRFC_raw.fit(X_raw_train, y_raw_train).predict(X_raw_test)
     y_pred_XGB_raw = modelXGB_raw.fit(X_raw_train, y_raw_train).predict(X_raw_test)
     y_pred_CAT_raw = modelCAT_raw.fit(X_raw_train, y_raw_train).predict(X_raw_test)
+    y_pred_LGBM_raw = modelLGBM_raw.fit(X_raw_train, y_raw_train).predict(X_raw_test)
 
     # Oversampled
     modelRFC_os = RandomForestClassifier(random_state=42)
     modelXGB_os = XGBClassifier(random_state=42, eval_metric='logloss')
     modelCAT_os = CatBoostClassifier(random_state=42, verbose=0)
+    modelLGBM_os = LGBMClassifier(random_state=42, verbose=0)
     y_pred_RFC_os = modelRFC_os.fit(X_os_train, y_os_train).predict(X_os_test)
     y_pred_XGB_os = modelXGB_os.fit(X_os_train, y_os_train).predict(X_os_test)
     y_pred_CAT_os = modelCAT_os.fit(X_os_train, y_os_train).predict(X_os_test)
+    y_pred_LGBM_os = modelLGBM_os.fit(X_os_train, y_os_train).predict(X_os_test)
 
     # Cleaned
     modelRFC_cln = RandomForestClassifier(random_state=42)
     modelXGB_cln = XGBClassifier(random_state=42, eval_metric='logloss')
     modelCAT_cln = CatBoostClassifier(random_state=42, verbose=0)
+    modelLGBM_cln = LGBMClassifier(random_state=42, verbose=0)
     y_pred_RFC_cln = modelRFC_cln.fit(X_cln_train, y_cln_train).predict(X_cln_test)
     y_pred_XGB_cln = modelXGB_cln.fit(X_cln_train, y_cln_train).predict(X_cln_test)
     y_pred_CAT_cln = modelCAT_cln.fit(X_cln_train, y_cln_train).predict(X_cln_test)
+    y_pred_LGBM_cln = modelLGBM_cln.fit(X_cln_train, y_cln_train).predict(X_cln_test)
 
     return (
-        modelRFC_raw, y_pred_RFC_raw, modelXGB_raw, y_pred_XGB_raw, modelCAT_raw, y_pred_CAT_raw,
-        modelRFC_os, y_pred_RFC_os, modelXGB_os, y_pred_XGB_os, modelCAT_os, y_pred_CAT_os,
-        modelRFC_cln, y_pred_RFC_cln, modelXGB_cln, y_pred_XGB_cln, modelCAT_cln, y_pred_CAT_cln
+        modelRFC_raw, y_pred_RFC_raw, modelXGB_raw, y_pred_XGB_raw, modelCAT_raw, y_pred_CAT_raw, modelLGBM_raw, y_pred_LGBM_raw,
+        modelRFC_os, y_pred_RFC_os, modelXGB_os, y_pred_XGB_os, modelCAT_os, y_pred_CAT_os, modelLGBM_os, y_pred_LGBM_os,  
+        modelRFC_cln, y_pred_RFC_cln, modelXGB_cln, y_pred_XGB_cln, modelCAT_cln, y_pred_CAT_cln, modelLGBM_cln, y_pred_LGBM_cln
     )
 
 
@@ -312,17 +318,16 @@ def modelAnalysis():
     st.subheader("Baseline Models (Raw / Unbalanced Survival Class)")
     eval_classifier("Random Forest (Raw)", X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_RFC_raw, class_names)
     eval_classifier("XGBoost (Raw)", X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_XGB_raw, class_names)
-    # eval_classifier("LightGBM Classifier (Raw)", X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_LGMC_raw, class_names)
     eval_classifier("CatBoost Classifier (Raw)", X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_CAT_raw, class_names)
-
+    eval_classifier("LightGBM Classifier (Raw)", X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_LGBM_raw, class_names)
 
     # ------------------ 2. Oversampled ------------------
     st.subheader("Oversampled Survival Class Pipeline")
     st.write(f"Resampled class distribution: {Counter(y_os)}")
     eval_classifier("Random Forest (Oversampled)", X_os_train, y_os_train, X_os_test, y_os_test, y_pred_RFC_os, class_names)
     eval_classifier("XGBoost (Oversampled)", X_os_train, y_os_train, X_os_test, y_os_test, y_pred_RFC_os, class_names)
-    # eval_classifier("LightGBM Classifier (Oversampled)", X_os_train, y_os_train, X_os_test, y_os_test, y_pred_LGMC_os, class_names)
     eval_classifier("CatBoost Classifier (Oversampled)", X_os_train, y_os_train, X_os_test, y_os_test, y_pred_CAT_os, class_names)
+    eval_classifier("LightGBM Classifier (Oversampled)", X_os_train, y_os_train, X_os_test, y_os_test, y_pred_LGBM_os, class_names)
 
 
     # ------------------ 3. Oversampled + ENN cleaning ------------------
@@ -330,8 +335,8 @@ def modelAnalysis():
     st.write(f"Class distribution after ENN: {Counter(y_cleaned)}")
     eval_classifier("Random Forest (Oversampled + ENN)", X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_RFC_cln, class_names)
     eval_classifier("XGBoost (Oversampled + ENN)", X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_XGB_cln, class_names)
-    # eval_classifier("LightGBM Classifier (Oversampled + ENN)", X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_LGMC_cln, class_names)
     eval_classifier("CatBoost Classifier (Oversampled + ENN)", X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_CAT_cln, class_names)
+    eval_classifier("LightGBM Classifier (Oversampled + ENN)", X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_LGBM_cln, class_names)
 
     # ---- Summary table ----
     st.subheader("Summary of Accuracy and Balanced Accuracy for all models")
@@ -347,20 +352,20 @@ def modelAnalysis():
     # Baseline
     collect("RF Raw", X_raw_test, y_raw_test, y_pred_RFC_raw)
     collect("XGB Raw", X_raw_test, y_raw_test, y_pred_XGB_raw)
-    # collect("LGMC Raw", X_raw_test, y_raw_test, y_pred_LGMC_raw)
     collect("CAT Raw", X_raw_test, y_raw_test, y_pred_CAT_raw)
+    collect("LGBM Raw", X_raw_test, y_raw_test, y_pred_LGBM_raw)
 
     # Oversampled
     collect("RF OS", X_os_test, y_os_test, y_pred_RFC_os)
     collect("XGB OS", X_os_test, y_os_test, y_pred_XGB_os)
-    # collect("LGMC OS", X_os_test, y_os_test, y_pred_LGMC_os)
     collect("CAT OS", X_os_test, y_os_test, y_pred_CAT_os)
+    collect("LGBM OS", X_os_test, y_os_test, y_pred_LGBM_os)
 
     # Oversampled + ENN
     collect("RF OS+ENN", X_cln_test, y_cln_test, y_pred_RFC_cln)
     collect("XGB OS+ENN", X_cln_test, y_cln_test, y_pred_XGB_cln)
-    # collect("LGMC OS+ENN", X_cln_test, y_cln_test, y_pred_LGMC_cln)
     collect("CAT OS+ENN", X_cln_test, y_cln_test, y_pred_CAT_cln)
+    collect("LGBM OS+ENN", X_cln_test, y_cln_test, y_pred_LGBM_cln)
 
     summary_df = pd.DataFrame(summary_rows).round(3)
 
@@ -381,15 +386,32 @@ def modelAnalysis():
     )
 
 def application():
+    # --- NEW: model selector dropdown ---
+    # st.sidebar.subheader("Choose a model")
+    # model_options = {
+    #     "Random Forest (OS+ENN)": (modelRFC_cln, accuracy_score(y_cln_test, y_pred_RFC_cln)),
+    #     "XGBoost (OS+ENN)"         : (modelXGB_cln, accuracy_score(y_cln_test, y_pred_XGB_cln)),
+    #     "CatBoost (OS+ENN)"        : (modelCAT_cln, accuracy_score(y_cln_test, y_pred_CAT_cln)),
+    #     "LightGBM (OS+ENN)"        : (modelLGBM_cln, accuracy_score(y_cln_test, y_pred_LGBM_cln)),
+    # }
+    # # dropdown lives in the sidebar so it doesn't clutter your main form
+    # selected = st.sidebar.selectbox("Select model", list(model_options.keys()), index=0)
+    # clf, acc = model_options[selected]
+    # # store the selection in session_state
+    # st.session_state["clf"] = clf
+    # st.session_state["model_name"] = selected
+    # st.session_state["model_accuracy"] = acc
+    # --- end of model selector ---
+
     # Print metrics for cleaned data
     acc_cln = accuracy_score(y_cln_test, y_pred_RFC_cln)
 
     # CHANGED: use setdefault to avoid overwriting existing state
-    st.session_state.setdefault("model_name", modelRFC_cln.__class__.__name__)
-    st.session_state.setdefault("model_accuracy", acc_cln)
+    # st.session_state.setdefault("model_name", modelRFC_cln.__class__.__name__)
+    # st.session_state.setdefault("model_accuracy", acc_cln)
 
     # CHANGED: grouped all required objects for prediction; removed unused raw_data & encoded_data
-    st.session_state.setdefault("clf", modelRFC_cln)
+    # st.session_state.setdefault("clf", modelRFC_cln)
     st.session_state.setdefault("feature_cols", list(X1.columns))
     st.session_state.setdefault("encoders", encoders)
     st.session_state.setdefault("class_names", class_names)
@@ -432,6 +454,18 @@ def application():
     # RIGHT: Load sample & prediction
     with right_col:
         st.write("Prediction")
+        # --- NEW: dropdown right under Prediction header ---
+        model_options = {
+            "Random Forest (OS+ENN)": (modelRFC_cln, accuracy_score(y_cln_test, y_pred_RFC_cln)),
+            "XGBoost (OS+ENN)"         : (modelXGB_cln, accuracy_score(y_cln_test, y_pred_XGB_cln)),
+            "CatBoost (OS+ENN)"        : (modelCAT_cln, accuracy_score(y_cln_test, y_pred_CAT_cln)),
+            "LightGBM (OS+ENN)"        : (modelLGBM_cln, accuracy_score(y_cln_test, y_pred_LGBM_cln)),
+        }
+        selected = st.selectbox("Select model", list(model_options.keys()), index=0)
+        clf, acc = model_options[selected]
+        st.session_state["clf"] = clf
+        st.session_state["model_name"] = selected
+        st.session_state["model_accuracy"] = acc
         btn_col1, btn_col2 = st.columns(2)
         with btn_col1:
             st.button("Load Random Sample", on_click=load_random_sample)
@@ -455,11 +489,15 @@ def application():
                         missing.append(col)
             else:
                 raw_key = f"{col}_raw"
-                inp = st.session_state.get(raw_key, None)
-                if inp is None:
+                inp = st.session_state.get(raw_key, "")
+                # treat blank or whitespace-only as missing
+                if not inp or not inp.strip():
                     missing.append(col)
                 else:
-                    user_inputs[col] = float(inp)
+                    try:
+                        user_inputs[col] = float(inp)
+                    except ValueError:
+                        missing.append(col)
                 # val = st.session_state.get(col, None)
                 # if val is None:
                 #     missing.append(col)
@@ -473,7 +511,8 @@ def application():
                 st.warning(f"Cannot predict: missing inputs for {', '.join(missing)}.")
             else:
                 X_new = pd.DataFrame([user_inputs])[feature_cols]
-                pred = clf.predict(X_new)[0]
+                pred_arr = clf.predict(X_new)
+                pred = int(pred_arr[0])
                 risk = "HIGH" if pred <= 2 else "MEDIUM" if pred <= 5 else "LOW"
                 est_label = session_class_names[pred]
 
@@ -483,23 +522,30 @@ def application():
                     probs = clf.predict_proba(X_new)[0]
                     confidence_str = f"{probs[pred]*100:.1f}%"
 
-
-                # Display results
-                st.write("### Prediction Result")
                 info = (
                     f"**Model:** {st.session_state['model_name']}  •  "
                     f"**Test Accuracy:** {st.session_state['model_accuracy']:.3f}  •  "
                     f"**Confidence:** {confidence_str}"
                 )
-                st.markdown(info)
 
-                est_label = class_names[pred]
-                if risk == "HIGH":
-                    st.error("🟥 High Risk ("+est_label+" years of survival)")
-                elif risk == "MEDIUM":
-                    st.warning("🟧 Medium Risk ("+est_label+" years of survival)")
-                else:
-                    st.success("🟩 Low Risk ("+est_label+" years of survival)")
+                # Persist into session_state
+                st.session_state["prediction_result"] = {
+                    "info": info,
+                    "risk": risk,
+                    "est_label": est_label
+                }
+
+        # Always render the last prediction (until next Predict click)
+        if "prediction_result" in st.session_state:
+            res = st.session_state["prediction_result"]
+            st.write("### Prediction Result")
+            st.markdown(res["info"])
+            if res["risk"] == "HIGH":
+                st.error(f"🟥 High Risk ({res['est_label']} years of survival)")
+            elif res["risk"] == "MEDIUM":
+                st.warning(f"🟧 Medium Risk ({res['est_label']} years of survival)")
+            else:
+                st.success(f"🟩 Low Risk ({res['est_label']} years of survival)")
 
     # LEFT: Input form (starts blank unless a sample was loaded)
     with left_col:
@@ -528,13 +574,13 @@ def main():
         ["Data Exploration", "Modeling Results", "Application"]
     )    
     # Train (once, cached) and unpack into globals
-    global modelRFC_raw, y_pred_RFC_raw, modelXGB_raw, y_pred_XGB_raw, modelCAT_raw, y_pred_CAT_raw
-    global modelRFC_os, y_pred_RFC_os, modelXGB_os, y_pred_XGB_os, modelCAT_os, y_pred_CAT_os
-    global modelRFC_cln, y_pred_RFC_cln, modelXGB_cln, y_pred_XGB_cln, modelCAT_cln, y_pred_CAT_cln
+    global modelRFC_raw, y_pred_RFC_raw, modelXGB_raw, y_pred_XGB_raw, modelCAT_raw, y_pred_CAT_raw, modelLGBM_raw, y_pred_LGBM_raw
+    global modelRFC_os, y_pred_RFC_os, modelXGB_os, y_pred_XGB_os, modelCAT_os, y_pred_CAT_os, modelLGBM_os, y_pred_LGBM_os
+    global modelRFC_cln, y_pred_RFC_cln, modelXGB_cln, y_pred_XGB_cln, modelCAT_cln, y_pred_CAT_cln, modelLGBM_cln, y_pred_LGBM_cln
     (
-        modelRFC_raw, y_pred_RFC_raw, modelXGB_raw, y_pred_XGB_raw, modelCAT_raw, y_pred_CAT_raw,
-        modelRFC_os, y_pred_RFC_os, modelXGB_os, y_pred_XGB_os, modelCAT_os, y_pred_CAT_os,
-        modelRFC_cln, y_pred_RFC_cln, modelXGB_cln, y_pred_XGB_cln, modelCAT_cln, y_pred_CAT_cln
+        modelRFC_raw, y_pred_RFC_raw, modelXGB_raw, y_pred_XGB_raw, modelCAT_raw, y_pred_CAT_raw, modelLGBM_raw, y_pred_LGBM_raw,
+        modelRFC_os, y_pred_RFC_os, modelXGB_os, y_pred_XGB_os, modelCAT_os, y_pred_CAT_os, modelLGBM_os, y_pred_LGBM_os,
+        modelRFC_cln, y_pred_RFC_cln, modelXGB_cln, y_pred_XGB_cln, modelCAT_cln, y_pred_CAT_cln, modelLGBM_cln, y_pred_LGBM_cln
     ) = trainModels()
 
     calibrate_clf()
