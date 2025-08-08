@@ -4,6 +4,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import sys
+from pathlib import Path
 from matplotlib.lines import Line2D
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler, FunctionTransformer
@@ -21,10 +23,18 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
 from sklearn.pipeline import Pipeline
+
+# Add the scripts directory to Python path - safer approach for deployments
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(ROOT / "scripts"))
 from custom_transformers import UMAPTransformer, TopKVarianceSelector
+
 import shap
 import joblib
 
+
+# Set page config after imports - must be called before any other Streamlit commands
+st.set_page_config(initial_sidebar_state="collapsed")
 
 # ────────────────────────────────────────────
 # Plot helpers (silhouette removed from evaluate_clusters)
@@ -170,55 +180,6 @@ def compute_eda(tag: str):
 
 
 # ────────────────────────────────────────────
-# Initialize sidebar state - clear it by default
-# ────────────────────────────────────────────
-# Clear sidebar for all tabs except Clinical Predictor
-if 'clinical_predictor_active' not in st.session_state:
-    st.session_state.clinical_predictor_active = False
-
-# ────────────────────────────────────────────
-# Main page layout with tabs
-st.title("Cancer Subtype Analysis: EDA + Modeling")
-
-main_tabs = st.tabs(
-    ["Data Overview", "Clustering Analysis", "Model Evaluation", "SHAP Explanations", "Clinical Predictor",
-     "Project Findings"])
-
-# DATA OVERVIEW TAB
-with main_tabs[0]:
-    # Clear sidebar when not on Clinical Predictor tab
-    if st.session_state.clinical_predictor_active:
-        st.sidebar.empty()
-        st.session_state.clinical_predictor_active = False
-
-    st.subheader("Basic Exploratory Data Analysis")
-    df = load_data()
-    st.write("Merged shape:", df.shape)
-    st.write("Class counts:", df["Class"].value_counts())
-    st.write("Missing values:", int(df.isna().sum().sum()))
-
-    fig, ax = plt.subplots(figsize=(6, 4))
-    sns.countplot(x="Class", data=df, ax=ax)
-    st.pyplot(fig)
-
-    variances = df.drop(columns="Class").var()
-    st.write("Variance summary:", variances.describe())
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.histplot(variances, bins=100, kde=True, ax=ax)
-    st.pyplot(fig)
-
-# CLUSTERING ANALYSIS TAB
-with main_tabs[1]:
-    st.subheader("Clustering Analysis")
-    clustering_tabs = st.tabs(tags)
-    for i, tag in enumerate(tags):
-        with clustering_tabs[i]:
-            st.subheader(f"Pipeline: {tag}")
-            X2d, clusters, Xfull, labels = compute_eda(tag)
-            plot_step(tag, X2d, clusters, Xfull, labels)
-
-
-# ────────────────────────────────────────────
 # Modeling pipelines & model IO helpers
 # ────────────────────────────────────────────
 def get_pipeline(tag):
@@ -338,11 +299,48 @@ def load_model_metrics(tag, model_name):
         return None
     return joblib.load(path)
 
+# ────────────────────────────────────────────
+# Main page layout with selectbox instead of segmented control
+# ────────────────────────────────────────────
+st.title("Cancer Subtype Analysis: EDA + Modeling")
 
-# ────────────────────────────────────────────
-# Model Evaluation Tab: train if needed, then use stored
-# ────────────────────────────────────────────
-with main_tabs[2]:
+section = st.selectbox(
+    "Select Section:",
+    options=["Data Overview", "Clustering Analysis", "Model Evaluation", "SHAP Explanations", "Clinical Predictor", "Project Findings"],
+    index=0,
+    key="section"
+)
+
+# DATA OVERVIEW SECTION
+if section == "Data Overview":
+    st.subheader("Basic Exploratory Data Analysis")
+    df = load_data()
+    st.write("Merged shape:", df.shape)
+    st.write("Class counts:", df["Class"].value_counts())
+    st.write("Missing values:", int(df.isna().sum().sum()))
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.countplot(x="Class", data=df, ax=ax)
+    st.pyplot(fig)
+
+    variances = df.drop(columns="Class").var()
+    st.write("Variance summary:", variances.describe())
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.histplot(variances, bins=100, kde=True, ax=ax)
+    st.pyplot(fig)
+
+# CLUSTERING ANALYSIS SECTION
+elif section == "Clustering Analysis":
+    st.subheader("Clustering Analysis")
+    clustering_tabs = st.tabs(tags)
+    for i, tag in enumerate(tags):
+        with clustering_tabs[i]:
+            st.subheader(f"Pipeline: {tag}")
+            X2d, clusters, Xfull, labels = compute_eda(tag)
+            plot_step(tag, X2d, clusters, Xfull, labels)
+
+# MODEL EVALUATION SECTION
+elif section == "Model Evaluation":
     st.subheader("Model Evaluation")
 
     df = load_data()
@@ -396,10 +394,8 @@ with main_tabs[2]:
                     if sh["shuffled_acc"] < sh["baseline"] - 0.01:
                         st.warning("⚠️ Shuffled‑label accuracy below theoretical baseline — check CV or leakage.")
 
-# ────────────────────────────────────────────
-# SHAP Explanations Tab: always use stored models
-# ────────────────────────────────────────────
-with main_tabs[3]:
+# SHAP EXPLANATIONS SECTION
+elif section == "SHAP Explanations":
     st.subheader("SHAP Feature Importance")
     col1, col2 = st.columns(2)
     with col1:
@@ -442,13 +438,8 @@ with main_tabs[3]:
             st.pyplot(fig_shap)
             st.info("SHAP explanation unavailable for this model/feature set.")
 
-# ────────────────────────────────────────────
-# CLINICAL PREDICTOR TAB
-# ────────────────────────────────────────────
-with main_tabs[4]:
-    # Clear any existing sidebar content first
-    st.sidebar.empty()
-
+# CLINICAL PREDICTOR SECTION - Only section with sidebar
+elif section == "Clinical Predictor":
     st.header("🩺 Cancer Subtype Clinical Predictor")
     st.markdown("---")
     st.markdown("### Clinical Decision Support Tool")
@@ -459,28 +450,41 @@ with main_tabs[4]:
     X = df.drop(columns="Class")
     y = df["Class"]
 
-    # Sidebar controls - only populated when this tab is active
-    st.sidebar.header("🩺 Clinical Predictor Settings")
+    # Sidebar controls - only created in this section
+    with st.sidebar:
+        st.header("🩺 Clinical Predictor Settings")
 
-    # Pipeline selection
-    selected_pipeline = st.sidebar.selectbox(
-        "🔧 Select Preprocessing Pipeline",
-        options=tags,
-        index=2,  # Default to "Threshold-Filtered (log)" - the best performing
-        help="Choose the preprocessing pipeline for feature engineering"
-    )
+        # Pipeline selection
+        selected_pipeline = st.selectbox(
+            "🔧 Select Preprocessing Pipeline",
+            options=tags,
+            index=2,  # Default to "Threshold-Filtered (log)" - the best performing
+            help="Choose the preprocessing pipeline for feature engineering"
+        )
 
-    # Model selection
-    model_names = [m[2] for m in model_specs]
-    selected_model = st.sidebar.selectbox(
-        "🤖 Select Classification Model",
-        options=model_names,
-        index=2,  # Default to "SGD Classifier" - the best performing
-        help="Choose the machine learning model for prediction"
-    )
+        # Model selection
+        model_names = [m[2] for m in model_specs]
+        selected_model = st.selectbox(
+            "🤖 Select Classification Model",
+            options=model_names,
+            index=2,  # Default to "SGD Classifier" - the best performing
+            help="Choose the machine learning model for prediction"
+        )
 
-    st.sidebar.markdown("---")
+        st.markdown("---")
 
+        # Number of genes to display
+        num_genes = st.slider("Number of Top Genes to Display",
+                              min_value=5, max_value=50,
+                              value=20, step=5,
+                              help="Select how many top variance genes to display for input")
+
+        st.markdown("---")
+        st.markdown("**💡 Tips:**")
+        st.markdown("• Use median values as a starting point")
+        st.markdown("• Try the random sample button for real patient data")
+        st.markdown("• Adjust individual gene values to see prediction changes")
+        st.markdown("• Compare different pipeline/model combinations")
 
     # Load the selected model
     @st.cache_data
@@ -512,12 +516,6 @@ with main_tabs[4]:
                         f"• Accuracy: {current_metrics['metrics']['Accuracy']:.3f}\n"
                         f"• F1 Score: {current_metrics['metrics']['F1 Score']:.3f}\n"
                         f"• Precision: {current_metrics['metrics']['Precision']:.3f}")
-
-    # Number of genes to display
-    num_genes = st.sidebar.slider("Number of Top Genes to Display",
-                                  min_value=5, max_value=50,
-                                  value=20, step=5,
-                                  help="Select how many top variance genes to display for input")
 
     # Get pipeline steps for feature preprocessing
     pipeline_steps = get_pipeline(selected_pipeline)
@@ -557,13 +555,6 @@ with main_tabs[4]:
     available_genes, n_features_after_preprocessing = get_processed_features(selected_pipeline)
 
     st.sidebar.info(f"📊 Pipeline uses {n_features_after_preprocessing} features after preprocessing")
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**💡 Tips:**")
-    st.sidebar.markdown("• Use median values as a starting point")
-    st.sidebar.markdown("• Try the random sample button for real patient data")
-    st.sidebar.markdown("• Adjust individual gene values to see prediction changes")
-    st.sidebar.markdown("• Compare different pipeline/model combinations")
 
     # Show current selection prominently
     if selected_pipeline == "Threshold-Filtered (log)" and selected_model == "SGD Classifier":
@@ -739,10 +730,8 @@ with main_tabs[4]:
             st.error(f"Prediction failed: {str(e)}")
             st.error("Please check your input values and try again.")
 
-# ────────────────────────────────────────────
-# PROJECT FINDINGS TAB - STATIC CONTENT (OPTIMIZED)
-# ────────────────────────────────────────────
-with main_tabs[5]:
+# PROJECT FINDINGS SECTION
+elif section == "Project Findings":
     st.header("🔬 Project Findings & Analysis Summary")
 
 
