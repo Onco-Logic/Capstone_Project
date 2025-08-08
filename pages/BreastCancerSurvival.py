@@ -121,7 +121,7 @@ def trainModels():
     # Raw
     modelRFC_raw = RandomForestClassifier(random_state=42)
     modelXGB_raw = XGBClassifier(random_state=42, eval_metric='logloss')
-    modelCAT_raw = CatBoostClassifier(random_state=42, verbose=0)
+    modelCAT_raw = CatBoostClassifier(random_state=42, verbose=0, train_dir="models")
     modelLGBM_raw = LGBMClassifier(random_state=42, verbose=0)
     y_pred_RFC_raw = modelRFC_raw.fit(X_raw_train, y_raw_train).predict(X_raw_test)
     y_pred_XGB_raw = modelXGB_raw.fit(X_raw_train, y_raw_train).predict(X_raw_test)
@@ -131,7 +131,7 @@ def trainModels():
     # Oversampled
     modelRFC_os = RandomForestClassifier(random_state=42)
     modelXGB_os = XGBClassifier(random_state=42, eval_metric='logloss')
-    modelCAT_os = CatBoostClassifier(random_state=42, verbose=0)
+    modelCAT_os = CatBoostClassifier(random_state=42, verbose=0, train_dir="models")
     modelLGBM_os = LGBMClassifier(random_state=42, verbose=0)
     y_pred_RFC_os = modelRFC_os.fit(X_os_train, y_os_train).predict(X_os_test)
     y_pred_XGB_os = modelXGB_os.fit(X_os_train, y_os_train).predict(X_os_test)
@@ -141,7 +141,7 @@ def trainModels():
     # Cleaned
     modelRFC_cln = RandomForestClassifier(random_state=42)
     modelXGB_cln = XGBClassifier(random_state=42, eval_metric='logloss')
-    modelCAT_cln = CatBoostClassifier(random_state=42, verbose=0)
+    modelCAT_cln = CatBoostClassifier(random_state=42, verbose=0, train_dir="models")
     modelLGBM_cln = LGBMClassifier(random_state=42, verbose=0)
     y_pred_RFC_cln = modelRFC_cln.fit(X_cln_train, y_cln_train).predict(X_cln_test)
     y_pred_XGB_cln = modelXGB_cln.fit(X_cln_train, y_cln_train).predict(X_cln_test)
@@ -672,8 +672,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
