@@ -44,17 +44,13 @@ data = pd.read_csv(file_path)
 
 # Label encode classification columns
 le = LabelEncoder()
-pdata = data.copy()
 encoders = {}
-
+pdata = data.copy()
 for i in pdata.columns:
     if pdata[i].dtype == 'object':
         pdata[i] = le.fit_transform(pdata[i])
         encoders[i] = le   # Store the encoder for each column
         le = LabelEncoder()  # Re-instantiate for the next column
-
-# Copy of encoded dataset to use for survival prediction
-pdataS = pdata.copy()
 
 # Create the new target column 'Survival Class' with 6 categories
 def categorize_survival(months):
@@ -77,6 +73,8 @@ def categorize_survival(months):
     else:
         return 8
 
+# Copy of encoded dataset to use for survival prediction
+pdataS = pdata.copy()
 # Apply the categorization function to create 'Survival Class'
 pdataS['Survival Class'] = pdataS['Survival Months'].apply(categorize_survival)
 X1 = pdataS.drop(['Survival Months', 'Survival Class', 'Status'], axis=1)
@@ -102,23 +100,23 @@ X_os_train, X_os_test, y_os_train, y_os_test = train_test_split(
 enn = EditedNearestNeighbours(sampling_strategy='all', n_neighbors=2, kind_sel='all')
 X_cleaned, y_cleaned = enn.fit_resample(X_os, y_os)
 X_cln_train, X_cln_test, y_cln_train, y_cln_test = train_test_split(
-        X_cleaned, y_cleaned, test_size=0.2, stratify=y_cleaned, random_state=42
-    )
+        X_cleaned, y_cleaned, test_size=0.2, stratify=y_cleaned, random_state=42)
 
-def calibrate_clf():
-    # 1. Wrap & fit a calibrated version of your already‐trained RF
-    calibrated_clf = CalibratedClassifierCV(
-        estimator=modelRFC_cln,  # your trained RF
-        cv=5,                         # 5-fold on your training fold
-        method='isotonic'             # or 'sigmoid' for Platt scaling
-    )
-    calibrated_clf.fit(X_cln_train, y_cln_train)
+# def calibrate_clf():
+#     # 1. Wrap & fit a calibrated version of your already‐trained RF
+#     calibrated_clf = CalibratedClassifierCV(
+#         estimator=modelRFC_cln,  # your trained RF
+#         cv=5,                         # 5-fold on your training fold
+#         method='isotonic'             # or 'sigmoid' for Platt scaling
+#     )
+#     calibrated_clf.fit(X_cln_train, y_cln_train)
 
-    # 2. Override the raw RF in session_state so your app picks up the calibrated one
-    st.session_state["clf"] = calibrated_clf
+#     # 2. Override the raw RF in session_state so your app picks up the calibrated one
+#     st.session_state["clf"] = calibrated_clf
 
-############################## Training Model & Application #############################################
-@st.cache_data
+
+########################################## Train Models #############################################
+@st.cache_resource
 def trainModels():
     # Raw
     modelRFC_raw = RandomForestClassifier(random_state=42)
@@ -156,8 +154,37 @@ def trainModels():
         modelRFC_cln, y_pred_RFC_cln, modelXGB_cln, y_pred_XGB_cln, modelCAT_cln, y_pred_CAT_cln, modelLGBM_cln, y_pred_LGBM_cln
     )
 
+########################################## Calibrate Models #############################################
+def calibrateModels():
+    """Calibrate each OS+ENN model once and stash into session_state."""
+    cleaned_models = {
+        "Random Forest (OS+ENN)": modelRFC_cln,
+        "XGBoost (OS+ENN)"      : modelXGB_cln,
+        "CatBoost (OS+ENN)"     : modelCAT_cln,
+        "LightGBM (OS+ENN)"     : modelLGBM_cln
+    }
+    # 2. For each base model, create a CalibratedClassifierCV wrapper:
+    #    - estimator=your already-trained model
+    #    - cv=5: use 5-fold cross‐validation on the training set to learn the mapping
+    #    - method="isotonic": isotonic regression calibration (non-parametric)
+    for name, mdl in cleaned_models.items():
+        calib = CalibratedClassifierCV(
+            estimator=mdl,
+            cv=5,
+            method="isotonic"
+        )
+        # 3. Fit the calibrator using the same cleaned training data you used before
+        calib.fit(X_cln_train, y_cln_train)
+        # 4. Store the newly calibrated classifier in Streamlit’s session_state
+        #    under a key like "cal_Random Forest (OS+ENN)"
+        st.session_state[f"cal_{name}"] = calib
 
-
+    # 5. Set the “default” classifier in session_state["clf"] if not already set.
+    #    In your app you refer to session_state["clf"] whenever you need to predict.
+    default_name = "Random Forest (OS+ENN)"
+    st.session_state.setdefault("clf", st.session_state[f"cal_{default_name}"])
+    # 6. Mark that calibration has been done so you don’t re-calibrate on every rerun
+    st.session_state["calibrated"] = True
 
 ############################################# Data Exploration #############################################
 def dataExploration():
@@ -219,45 +246,11 @@ def dataExploration():
     sel_status_cat = st.selectbox("Select a category to plot Status", status_cols)
     plot_status_by_category(data, sel_status_cat)
 
-    # Survival months distribution
-    st.subheader("Survival Months Distribution")
-    fig, ax = plt.subplots()
-    sns.histplot(data=data, x='Survival Months', hue=data['Survival Months'] // 12, palette='muted', ax=ax)
-    ax.set_title("Survival Months Distribution")
-    st.pyplot(fig)
-
-    # Status distribution
-    st.subheader("Status Distribution")
-    fig, ax = plt.subplots()
-    sns.countplot(data=data, x='Status', hue='Status', palette='muted', ax=ax)
-    ax.set_title("Status Distribution")
-    st.pyplot(fig)
-
+############################################ Modeling Analysis #############################################
 def modelAnalysis():
-    
-    ############################################ Modeling Analysis #############################################
-    
-    # Data Preprocessing
-    st.markdown("---")
-    st.subheader("Data Preprocessing")
-    st.markdown("---")
-
-    st.subheader("Encoded Dataset")
-    st.dataframe(pdata.head())
-
-
-    ################ Survival Model ################
-
-    st.markdown("---")
-    st.subheader("Survival Model (Multi-Class Classification)")
-    st.markdown("---")
-
-    
-    st.dataframe(X1.head())
-    st.dataframe(y1.head())
-
-    st.subheader("Survival Model (Multi-Class Classification)")
-    st.write(f"Original class distribution: {Counter(y1)}")
+    st.title("Survival Model (Multi-Class Classification)")
+    # Prepare two columns: left for detailed evals, right for the summary table
+    left_col, right_col = st.columns([3, 2])
 
     def eval_classifier(display_name, X_train, y_train, X_test, y_test, y_pred, class_names):
         # model.fit(X_train, y_train)
@@ -269,7 +262,7 @@ def modelAnalysis():
         recall = recall_score(y_test, y_pred, average='weighted', zero_division=0)
         f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0)
 
-        st.write(f"## {display_name}")
+        st.subheader(f" {display_name}")
         st.write(f"Accuracy: {acc:.3f}  •  Balanced Accuracy: {bal_acc:.3f}  •  Precision: {precision:.3f}  •  Recall: {recall:.3f}  •  F1: {f1:.3f}")
 
         conf_mat = confusion_matrix(y_test, y_pred)
@@ -307,108 +300,161 @@ def modelAnalysis():
         plt.tight_layout(pad=0.5)
         st.pyplot(fig)
 
-        st.write(f"Classification Report: {display_name}")
+        st.write(f"Classification Report:")
         report_dict = classification_report(
             y_test, y_pred, target_names=class_names, output_dict=True, zero_division=0
         )
         report_df = pd.DataFrame(report_dict).transpose().round(2)
         st.table(report_df)
 
-    # ------------------ 1. Baseline (raw/unbalanced) ------------------
-    st.subheader("Baseline Models (Raw / Unbalanced Survival Class)")
-    eval_classifier("Random Forest (Raw)", X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_RFC_raw, class_names)
-    eval_classifier("XGBoost (Raw)", X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_XGB_raw, class_names)
-    eval_classifier("CatBoost Classifier (Raw)", X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_CAT_raw, class_names)
-    eval_classifier("LightGBM Classifier (Raw)", X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_LGBM_raw, class_names)
+    def format_class_dist(counts, class_names, per_line=3):
+        # Build one entry per class
+        entries = [
+            f"{class_names[i]} years: {int(counts.get(i, 0))} samples"
+            for i in range(len(class_names))
+        ]
+        # Chunk into rows of `per_line` entries
+        lines = [
+            " | ".join(entries[i : i + per_line])
+            for i in range(0, len(entries), per_line)
+        ]
+        # Join rows with a blank line in between for readability
+        return "\n\n".join(lines)
 
-    # ------------------ 2. Oversampled ------------------
-    st.subheader("Oversampled Survival Class Pipeline")
-    st.write(f"Resampled class distribution: {Counter(y_os)}")
-    eval_classifier("Random Forest (Oversampled)", X_os_train, y_os_train, X_os_test, y_os_test, y_pred_RFC_os, class_names)
-    eval_classifier("XGBoost (Oversampled)", X_os_train, y_os_train, X_os_test, y_os_test, y_pred_RFC_os, class_names)
-    eval_classifier("CatBoost Classifier (Oversampled)", X_os_train, y_os_train, X_os_test, y_os_test, y_pred_CAT_os, class_names)
-    eval_classifier("LightGBM Classifier (Oversampled)", X_os_train, y_os_train, X_os_test, y_os_test, y_pred_LGBM_os, class_names)
+# ------------------ display per selected dataset ------------------
+    with left_col:
+        dataset_option = st.selectbox(
+            "Select dataset to display models for:",
+            ["Raw", "Oversampled", "Oversampled + ENN"]
+        )
+        if dataset_option == "Raw":
+            st.markdown("#### Original class distribution")
+            raw_counts = pd.Series(y1).value_counts().sort_index()
+            # st.markdown(format_class_dist(raw_counts, class_names))
+            # ——— Bar chart of Raw distribution ———
+            dist_df = pd.DataFrame({
+                "Survival Class": class_names,
+                "Count": [int(raw_counts.get(i, 0)) for i in range(len(class_names))]
+            })
+            fig, ax = plt.subplots(figsize=(8, 3))
+            sns.barplot(
+                x="Survival Class", y="Count", data=dist_df,
+                order=class_names, ax=ax
+            )
+            ax.set_xlabel("Survival Time (years)")
+            ax.set_ylabel("Number of Samples")
+            ax.set_title("Raw Samples per Survival Class")
+            ax.tick_params(axis="x", rotation=45)
+            st.pyplot(fig)
+            # ————————————————————————————
+            eval_classifier("Random Forest (Raw)",  X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_RFC_raw, class_names)
+            eval_classifier("XGBoost (Raw)",         X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_XGB_raw, class_names)
+            eval_classifier("CatBoost (Raw)",        X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_CAT_raw, class_names)
+            eval_classifier("LightGBM (Raw)",        X_raw_train, y_raw_train, X_raw_test, y_raw_test, y_pred_LGBM_raw, class_names)
 
+        elif dataset_option == "Oversampled":
+            st.markdown("#### Oversampled class distribution")
+            os_counts = pd.Series(y_os).value_counts().sort_index()
+            # st.markdown(format_class_dist(os_counts, class_names))
+            # ——— Bar chart of Oversampled distribution ———
+            dist_df = pd.DataFrame({
+                "Survival Class": class_names,
+                "Count": [int(os_counts.get(i, 0)) for i in range(len(class_names))]
+            })
+            fig, ax = plt.subplots(figsize=(8, 3))
+            sns.barplot(
+                x="Survival Class", y="Count", data=dist_df,
+                order=class_names, ax=ax
+            )
+            ax.set_xlabel("Survival Time (years)")
+            ax.set_ylabel("Number of Samples")
+            ax.set_title("Oversampled Samples per Survival Class")
+            ax.tick_params(axis="x", rotation=45)
+            st.pyplot(fig)
+            # ——————————————————————————————————————————
+            eval_classifier("Random Forest (Oversampled)",    X_os_train,  y_os_train, X_os_test, y_os_test, y_pred_RFC_os, class_names)
+            eval_classifier("XGBoost (Oversampled)",          X_os_train,  y_os_train, X_os_test, y_os_test, y_pred_XGB_os, class_names)
+            eval_classifier("CatBoost (Oversampled)",         X_os_train,  y_os_train, X_os_test, y_os_test, y_pred_CAT_os, class_names)
+            eval_classifier("LightGBM (Oversampled)",         X_os_train,  y_os_train, X_os_test, y_os_test, y_pred_LGBM_os, class_names)
 
-    # ------------------ 3. Oversampled + ENN cleaning ------------------
-    st.subheader("After ENN Cleaning")
-    st.write(f"Class distribution after ENN: {Counter(y_cleaned)}")
-    eval_classifier("Random Forest (Oversampled + ENN)", X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_RFC_cln, class_names)
-    eval_classifier("XGBoost (Oversampled + ENN)", X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_XGB_cln, class_names)
-    eval_classifier("CatBoost Classifier (Oversampled + ENN)", X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_CAT_cln, class_names)
-    eval_classifier("LightGBM Classifier (Oversampled + ENN)", X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_LGBM_cln, class_names)
+        else:  # Oversampled + ENN
+            st.markdown("#### ENN-cleaned class distribution")
+            cln_counts = pd.Series(y_cleaned).value_counts().sort_index()
+            # st.markdown(format_class_dist(cln_counts, class_names))
+            # ——— Bar chart of ENN-cleaned distribution ———
+            dist_df = pd.DataFrame({
+                "Survival Class": class_names,
+                "Count": [int(cln_counts.get(i, 0)) for i in range(len(class_names))]
+            })
+            fig, ax = plt.subplots(figsize=(8, 3))
+            sns.barplot(
+                x="Survival Class", y="Count", data=dist_df,
+                order=class_names, ax=ax
+            )
+            ax.set_xlabel("Survival Time (years)")
+            ax.set_ylabel("Number of Samples")
+            ax.set_title("ENN-Cleaned Samples per Survival Class")
+            ax.tick_params(axis="x", rotation=45)
+            st.pyplot(fig)
+            # ——————————————————————————————————————————
+            eval_classifier("Random Forest (Oversampled+ENN)", X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_RFC_cln, class_names)
+            eval_classifier("XGBoost (Oversampled+ENN)",       X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_XGB_cln, class_names)
+            eval_classifier("CatBoost (Oversampled+ENN)",      X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_CAT_cln, class_names)
+            eval_classifier("LightGBM (Oversampled+ENN)",      X_cln_train, y_cln_train, X_cln_test, y_cln_test, y_pred_LGBM_cln, class_names)
+ 
+    # ---- Summary table on the right ----
+    with right_col:
+        st.markdown("### Model Summary Results")
+        summary_rows = []
+        
+        def collect(name, X_test, y_test, y_pred):
+            # y_pred = model.predict(X_test)
+            summary_rows.append({
+                "Model": name,
+                "Accuracy": accuracy_score(y_test, y_pred),
+                "Balanced Accuracy": balanced_accuracy_score(y_test, y_pred),
+            })
+        
+        # Baseline
+        collect("RF Raw", X_raw_test, y_raw_test, y_pred_RFC_raw)
+        collect("XGB Raw", X_raw_test, y_raw_test, y_pred_XGB_raw)
+        collect("CAT Raw", X_raw_test, y_raw_test, y_pred_CAT_raw)
+        collect("LGBM Raw", X_raw_test, y_raw_test, y_pred_LGBM_raw)
 
-    # ---- Summary table ----
-    st.subheader("Summary of Accuracy and Balanced Accuracy for all models")
-    summary_rows = []
-    def collect(name, X_test, y_test, y_pred):
-        # y_pred = model.predict(X_test)
-        summary_rows.append({
-            "Model": name,
-            "Accuracy": accuracy_score(y_test, y_pred),
-            "Balanced Accuracy": balanced_accuracy_score(y_test, y_pred),
-        })
+        # Oversampled
+        collect("RF OS", X_os_test, y_os_test, y_pred_RFC_os)
+        collect("XGB OS", X_os_test, y_os_test, y_pred_XGB_os)
+        collect("CAT OS", X_os_test, y_os_test, y_pred_CAT_os)
+        collect("LGBM OS", X_os_test, y_os_test, y_pred_LGBM_os)
 
-    # Baseline
-    collect("RF Raw", X_raw_test, y_raw_test, y_pred_RFC_raw)
-    collect("XGB Raw", X_raw_test, y_raw_test, y_pred_XGB_raw)
-    collect("CAT Raw", X_raw_test, y_raw_test, y_pred_CAT_raw)
-    collect("LGBM Raw", X_raw_test, y_raw_test, y_pred_LGBM_raw)
+        # Oversampled + ENN
+        collect("RF OS+ENN", X_cln_test, y_cln_test, y_pred_RFC_cln)
+        collect("XGB OS+ENN", X_cln_test, y_cln_test, y_pred_XGB_cln)
+        collect("CAT OS+ENN", X_cln_test, y_cln_test, y_pred_CAT_cln)
+        collect("LGBM OS+ENN", X_cln_test, y_cln_test, y_pred_LGBM_cln)
 
-    # Oversampled
-    collect("RF OS", X_os_test, y_os_test, y_pred_RFC_os)
-    collect("XGB OS", X_os_test, y_os_test, y_pred_XGB_os)
-    collect("CAT OS", X_os_test, y_os_test, y_pred_CAT_os)
-    collect("LGBM OS", X_os_test, y_os_test, y_pred_LGBM_os)
+        summary_df = pd.DataFrame(summary_rows).round(3)
 
-    # Oversampled + ENN
-    collect("RF OS+ENN", X_cln_test, y_cln_test, y_pred_RFC_cln)
-    collect("XGB OS+ENN", X_cln_test, y_cln_test, y_pred_XGB_cln)
-    collect("CAT OS+ENN", X_cln_test, y_cln_test, y_pred_CAT_cln)
-    collect("LGBM OS+ENN", X_cln_test, y_cln_test, y_pred_LGBM_cln)
+        # Sort by Accuracy desc, then Balanced Accuracy desc
+        sorted_df = summary_df.sort_values(
+            by=["Accuracy", "Balanced Accuracy"],
+            ascending=[False, False]
+        ).reset_index(drop=True)
 
-    summary_df = pd.DataFrame(summary_rows).round(3)
+        # Add rank (1 = best accuracy)
+        sorted_df.insert(0, "Rank", range(1, len(sorted_df) + 1))
 
-    # Sort by Accuracy desc, then Balanced Accuracy desc
-    sorted_df = summary_df.sort_values(
-        by=["Accuracy", "Balanced Accuracy"],
-        ascending=[False, False]
-    ).reset_index(drop=True)
-
-    # Add rank (1 = best accuracy)
-    sorted_df.insert(0, "Rank", range(1, len(sorted_df) + 1))
-
-    # Display narrow
-    st.dataframe(
-        sorted_df.set_index("Rank"),
-        width=400,
-        use_container_width=False
-    )
+        # Display narrow
+        st.dataframe(
+            sorted_df.set_index("Rank"),
+            width=360,
+            use_container_width=False,
+            height=456       # ← set your desired vertical height here
+        )
 
 def application():
-    # --- NEW: model selector dropdown ---
-    # st.sidebar.subheader("Choose a model")
-    # model_options = {
-    #     "Random Forest (OS+ENN)": (modelRFC_cln, accuracy_score(y_cln_test, y_pred_RFC_cln)),
-    #     "XGBoost (OS+ENN)"         : (modelXGB_cln, accuracy_score(y_cln_test, y_pred_XGB_cln)),
-    #     "CatBoost (OS+ENN)"        : (modelCAT_cln, accuracy_score(y_cln_test, y_pred_CAT_cln)),
-    #     "LightGBM (OS+ENN)"        : (modelLGBM_cln, accuracy_score(y_cln_test, y_pred_LGBM_cln)),
-    # }
-    # # dropdown lives in the sidebar so it doesn't clutter your main form
-    # selected = st.sidebar.selectbox("Select model", list(model_options.keys()), index=0)
-    # clf, acc = model_options[selected]
-    # # store the selection in session_state
-    # st.session_state["clf"] = clf
-    # st.session_state["model_name"] = selected
-    # st.session_state["model_accuracy"] = acc
-    # --- end of model selector ---
-
     # Print metrics for cleaned data
     acc_cln = accuracy_score(y_cln_test, y_pred_RFC_cln)
-
-    # CHANGED: use setdefault to avoid overwriting existing state
-    # st.session_state.setdefault("model_name", modelRFC_cln.__class__.__name__)
-    # st.session_state.setdefault("model_accuracy", acc_cln)
 
     # CHANGED: grouped all required objects for prediction; removed unused raw_data & encoded_data
     # st.session_state.setdefault("clf", modelRFC_cln)
@@ -449,23 +495,27 @@ def application():
                 st.session_state[f"{col}_raw"] = str(sample[col])
         st.session_state["loaded_idx"] = idx
 
-    left_col, right_col = st.columns([5, 3.5])
+    left_col, right_col = st.columns([5, 4])
 
     # RIGHT: Load sample & prediction
     with right_col:
         st.write("Prediction")
-        # --- NEW: dropdown right under Prediction header ---
+        # now pulling from session_state
         model_options = {
-            "Random Forest (OS+ENN)": (modelRFC_cln, accuracy_score(y_cln_test, y_pred_RFC_cln)),
-            "XGBoost (OS+ENN)"         : (modelXGB_cln, accuracy_score(y_cln_test, y_pred_XGB_cln)),
-            "CatBoost (OS+ENN)"        : (modelCAT_cln, accuracy_score(y_cln_test, y_pred_CAT_cln)),
-            "LightGBM (OS+ENN)"        : (modelLGBM_cln, accuracy_score(y_cln_test, y_pred_LGBM_cln)),
+            name: (st.session_state[f"cal_{name}"], st.session_state.get(f"acc_{name}", 0))
+            for name in [
+                "Random Forest (OS+ENN)",
+                "XGBoost (OS+ENN)",
+                "CatBoost (OS+ENN)",
+                "LightGBM (OS+ENN)",
+            ]
         }
         selected = st.selectbox("Select model", list(model_options.keys()), index=0)
         clf, acc = model_options[selected]
-        st.session_state["clf"] = clf
-        st.session_state["model_name"] = selected
-        st.session_state["model_accuracy"] = acc
+        st.session_state["clf"]           = clf
+        st.session_state["model_name"]    = selected
+        st.session_state["model_accuracy"]= acc
+
         btn_col1, btn_col2 = st.columns(2)
         with btn_col1:
             st.button("Load Random Sample", on_click=load_random_sample)
@@ -503,8 +553,6 @@ def application():
                 #     missing.append(col)
                 # else:
                 #     user_inputs[col] = val
-
-                
 
         if do_predict:
             if missing:
@@ -583,10 +631,30 @@ def main():
         modelRFC_cln, y_pred_RFC_cln, modelXGB_cln, y_pred_XGB_cln, modelCAT_cln, y_pred_CAT_cln, modelLGBM_cln, y_pred_LGBM_cln
     ) = trainModels()
 
-    calibrate_clf()
+    # ——— Store each cleaned‐pipeline model’s test accuracy ———
+    st.session_state["acc_Random Forest (OS+ENN)"] = accuracy_score(y_cln_test, y_pred_RFC_cln)
+    st.session_state["acc_XGBoost (OS+ENN)"]       = accuracy_score(y_cln_test, y_pred_XGB_cln)
+    st.session_state["acc_CatBoost (OS+ENN)"]      = accuracy_score(y_cln_test, y_pred_CAT_cln)
+    st.session_state["acc_LightGBM (OS+ENN)"]      = accuracy_score(y_cln_test, y_pred_LGBM_cln)
+    # ————————————————————————————————————————————————
+
+    if "calibrated" not in st.session_state:
+        calibrateModels()
+
     if page == "Data Exploration":
         dataExploration()
     elif page == "Modeling Results":
+        st.markdown(
+            """
+            <style>
+              /* bump up from ~700px to 1200px, still centered */
+              .block-container {
+                max-width: 1200px !important;
+              }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
         modelAnalysis()
     elif page == "Application":
         st.markdown(
