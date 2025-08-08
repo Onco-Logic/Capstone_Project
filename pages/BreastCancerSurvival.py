@@ -102,19 +102,6 @@ X_cleaned, y_cleaned = enn.fit_resample(X_os, y_os)
 X_cln_train, X_cln_test, y_cln_train, y_cln_test = train_test_split(
         X_cleaned, y_cleaned, test_size=0.2, stratify=y_cleaned, random_state=42)
 
-# def calibrate_clf():
-#     # 1. Wrap & fit a calibrated version of your already‐trained RF
-#     calibrated_clf = CalibratedClassifierCV(
-#         estimator=modelRFC_cln,  # your trained RF
-#         cv=5,                         # 5-fold on your training fold
-#         method='isotonic'             # or 'sigmoid' for Platt scaling
-#     )
-#     calibrated_clf.fit(X_cln_train, y_cln_train)
-
-#     # 2. Override the raw RF in session_state so your app picks up the calibrated one
-#     st.session_state["clf"] = calibrated_clf
-
-
 ########################################## Train Models #############################################
 @st.cache_resource
 def trainModels():
