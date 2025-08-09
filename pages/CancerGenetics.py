@@ -60,34 +60,25 @@ def evaluate_clusters(name, X, cluster_labels, true_labels):
 def plot_step(name, X2d, clust, Xfull, labels):
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown(f"#### {name}: K‑Means clusters")
+        st.markdown(f"#### {name}: K-Means")
         fig, ax = plt.subplots(figsize=(5, 4))
         pts = ax.scatter(X2d[:, 0], X2d[:, 1], c=clust, cmap="viridis", alpha=0.6)
         fig.colorbar(pts, ax=ax, label="Cluster")
         st.pyplot(fig)
+
     with col2:
         st.markdown(f"#### {name}: True labels")
         codes, classes = pd.factorize(labels)
+        cmap = plt.cm.get_cmap("tab10", len(classes))
         fig, ax = plt.subplots(figsize=(5, 4))
-        ax.scatter(X2d[:, 0], X2d[:, 1], c=codes, cmap="tab10", alpha=0.6)
+        ax.scatter(X2d[:, 0], X2d[:, 1], c=codes, cmap=cmap, alpha=0.6)
         handles = [
-            Line2D([0], [0], marker='o', color='w',
-                   markerfacecolor=plt.cm.tab10(i / max(1, len(classes))),
-                   label=cls)
+            Line2D([0], [0], marker='o', linestyle='None', color='w',
+                   markerfacecolor=cmap(i), markeredgecolor='none', label=str(cls))
             for i, cls in enumerate(classes)
         ]
-        ax.legend(handles=handles, title="Class",
-                  bbox_to_anchor=(1.05, 1), loc="upper left")
+        ax.legend(handles=handles, title="Class", loc="upper right")
         st.pyplot(fig)
-
-    # cluster metrics
-    evaluate_clusters(name, Xfull, clust, labels)
-    # correct silhouette
-    if name == "Filtered-UMAP":
-        st.write(f"Silhouette (2D): {silhouette_score(X2d, clust):.3f}")
-    elif Xfull.shape[1] >= 2:
-        st.write(f"Silhouette: {silhouette_score(Xfull, clust):.3f}")
-
 
 # ────────────────────────────────────────────
 # Load & merge data (cached)
