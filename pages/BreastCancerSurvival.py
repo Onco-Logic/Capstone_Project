@@ -175,8 +175,8 @@ def calibrateModels():
 
 ############################################# Data Exploration #############################################
 def dataExploration():
-    st.subheader("Data Exploration")
-    st.markdown("---")
+    st.title("Data Exploration")
+    # st.markdown("---")
 
     # Preview of the raw dataset
     st.subheader("Preview of Dataset")
@@ -454,7 +454,7 @@ def application():
     st.session_state.setdefault("y_train", y_cln_train.reset_index(drop=True))
 
     ### Interactive Risk Predictor
-    st.subheader("Breast Cancer Survival Risk Predictor")
+    st.title("Breast Cancer Survival Risk Predictor")
 
     clf = st.session_state["clf"]
     feature_cols = st.session_state["feature_cols"]
@@ -486,7 +486,7 @@ def application():
 
     # RIGHT: Load sample & prediction
     with right_col:
-        st.write("Prediction")
+        st.subheader("Prediction")
         # now pulling from session_state
         model_options = {
             name: (st.session_state[f"cal_{name}"], st.session_state.get(f"acc_{name}", 0))
@@ -497,7 +497,7 @@ def application():
                 "LightGBM (OS+ENN)",
             ]
         }
-        selected = st.selectbox("Select model", list(model_options.keys()), index=0)
+        selected = st.selectbox("Select model pipeline", list(model_options.keys()), index=0)
         clf, acc = model_options[selected]
         st.session_state["clf"]           = clf
         st.session_state["model_name"]    = selected
@@ -573,7 +573,7 @@ def application():
         # Always render the last prediction (until next Predict click)
         if "prediction_result" in st.session_state:
             res = st.session_state["prediction_result"]
-            st.write("### Prediction Result")
+            st.write("### Results")
             st.markdown(res["info"])
             if res["risk"] == "HIGH":
                 st.error(f"🟥 High Risk ({res['est_label']} years of survival)")
@@ -584,7 +584,7 @@ def application():
 
     # LEFT: Input form (starts blank unless a sample was loaded)
     with left_col:
-        st.write("Enter patient characteristics:")
+        st.subheader("Enter patient characteristics:")
         col1, col2 = st.columns(2)
         for i, col in enumerate(feature_cols):
             target = col1 if i % 2 == 0 else col2
